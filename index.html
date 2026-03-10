@@ -124,7 +124,7 @@
     font-family: 'Cormorant Garamond', serif;
     font-style: italic;
     font-size: 16px;
-    color: var(--orchid);
+    color: #F1EDF7;
     opacity: 0.8;
     letter-spacing: 0.05em;
     font-weight: 300;
@@ -167,8 +167,8 @@
     font-size: 9px;
     letter-spacing: 0.35em;
     text-transform: uppercase;
-    color: var(--orchid);
-    opacity: 0.75;
+    color: #F1EDF7;
+    opacity: 0.6;
     margin-bottom: 14px;
     font-weight: 400;
   }
@@ -241,57 +241,59 @@
     color: var(--pearl);
     box-shadow: 0 0 20px rgba(150,100,220,0.35);
   }
-  .size-hint { margin-top: 10px; color: rgba(198,182,221,0.65); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
+  .size-hint { margin-top: 10px; color: rgba(241,237,247,0.55); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
 
   /* CTA */
   .btn-fetch {
     width: 100%;
     padding: 18px;
     background: #C6B6DD;
-    border: 1px solid rgba(198,182,221,0.5);
+    border: 1px solid rgba(241,237,247,0.3);
     border-radius: 12px;
-    color: var(--imperial);
-    font-family: 'Cormorant Garamond', serif;
-    font-weight: 600;
-    font-size: 20px;
-    letter-spacing: 0.18em;
+    color: #1a0d2e;
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
     cursor: pointer;
     transition: all 0.25s;
     margin-top: 6px;
-    box-shadow: 0 6px 28px rgba(198,182,221,0.2), 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 6px 28px rgba(198,182,221,0.25), 0 2px 8px rgba(0,0,0,0.4);
     display: flex; align-items: center; justify-content: center; gap: 12px;
+    position: relative; z-index: 2;
   }
   .btn-fetch:hover:not(:disabled) {
     background: #d9ccec;
-    box-shadow: 0 10px 40px rgba(198,182,221,0.35), 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 40px rgba(198,182,221,0.4), 0 2px 8px rgba(0,0,0,0.3);
     transform: translateY(-2px);
-    border-color: rgba(241,237,247,0.6);
   }
   .btn-fetch:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
   .btn-zip {
     padding: 11px 28px;
     background: transparent;
-    border: 1px solid rgba(156,140,185,0.25);
+    border: 1px solid rgba(241,237,247,0.2);
     border-radius: 100px;
-    color: var(--lavender);
+    color: #F1EDF7;
     font-family: 'Jost', sans-serif;
-    font-size: 12px;
-    letter-spacing: 0.15em;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s;
     font-weight: 400;
   }
   .btn-zip:hover:not(:disabled) {
-    border-color: var(--orchid);
-    color: var(--orchid);
-    box-shadow: 0 0 20px rgba(150,100,220,0.2);
+    border-color: #C6B6DD;
+    color: #C6B6DD;
+    box-shadow: 0 0 20px rgba(198,182,221,0.15);
   }
   .btn-zip:disabled { opacity: 0.3; cursor: not-allowed; }
 
   /* Progress */
   #progress-section { display: none; margin-top: 28px; }
-  .prog-row { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.2em; color: var(--orchid); opacity: 0.75; margin-bottom: 8px; }
+  .prog-row { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.2em; color: #F1EDF7; opacity: 0.65; margin-bottom: 8px; }
   .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 28px; overflow: hidden; }
   .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
 
@@ -357,7 +359,7 @@
     border-top: 1px solid rgba(156,140,185,0.1);
   }
   .stat-grp { display: flex; gap: 24px; }
-  .stat { font-size: 12px; color: var(--orchid); opacity: 0.8; }
+  .stat { font-size: 12px; color: #F1EDF7; opacity: 0.8; }
   .stat b { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 500; color: var(--orchid); opacity: 1; margin-right: 4px; }
   .stat b.miss { color: rgba(180,100,160,0.8); }
 
