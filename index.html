@@ -511,6 +511,18 @@
     <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
   </div>
 
+  <div id="visual-preview-section" style="display:none;">
+    <div class="float-card">
+      <div class="card-label">Visual Decklist Preview</div>
+      <div id="visual-preview-canvas-container" style="max-height: 600px; overflow-y: auto; background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px;">
+        <canvas id="visual-preview-canvas" style="width: 100%; height: auto; display: block; border-radius: 4px;"></canvas>
+      </div>
+      <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end;">
+        <button class="btn-zip" id="download-visual-btn" disabled>⬇ Download Image</button>
+      </div>
+    </div>
+  </div>
+
   <div id="progress-section" style="display:none;">
     <div class="float-card">
       <div class="prog-row">
@@ -525,10 +537,7 @@
           <div class="stat"><b id="stat-ok">0</b> found</div>
           <div class="stat"><b class="miss" id="stat-err">0</b> failed</div>
         </div>
-        <div style="display:flex;gap:12px;">
-          <button class="btn-zip" id="visual-btn" disabled>⬚ Visual Decklist</button>
-          <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
-        </div>
+        <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
       </div>
     </div>
   </div>
@@ -537,6 +546,7 @@
 <script>
 const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
 let selectedSize='normal',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
+let visualDeckData = { main: [], sideboard: [] }; // Store fetched cards with sections and quantities
 
 document.getElementById('size-options').addEventListener('click',e=>{
   const b=e.target.closest('.toggle');if(!b)return;
@@ -585,9 +595,10 @@ function isCollectorNum(s) {
   return /^\d+[a-zA-Z]?$/.test(s);
 }
 
-// Parses a line into { raw, name, set, number }
+// Parses a line into { raw, name, set, number, quantity }
 // Handles all these formats (brackets optional, order flexible):
 //   Lightning Bolt
+//   4x Lightning Bolt
 //   Lightning Bolt M10
 //   Lightning Bolt (M10)
 //   Lightning Bolt [M10]
@@ -598,11 +609,24 @@ function isCollectorNum(s) {
 //   Lightning Bolt #93 (M10)
 //   M10 93  /  93 M10
 function parseLine(raw) {
-  let l = raw
-    .replace(/^\d+\s*[xX×]\s*/, '')
-    .replace(/^\d+\s+/, '')
-    .replace(/\s*\/\/.*$/, '')
-    .trim();
+  let l = raw.trim();
+  
+  // Extract quantity first (4x, 4X, 4×, or bare 4)
+  let quantity = 1;
+  const qtyMatch = l.match(/^(\d+)\s*[xX×]\s*/);
+  if (qtyMatch) {
+    quantity = parseInt(qtyMatch[1]);
+    l = l.replace(/^\d+\s*[xX×]\s*/, '');
+  } else {
+    const bareQtyMatch = l.match(/^(\d+)\s+/);
+    if (bareQtyMatch) {
+      quantity = parseInt(bareQtyMatch[1]);
+      l = l.replace(/^\d+\s+/, '');
+    }
+  }
+  
+  // Remove double-faced card notation
+  l = l.replace(/\s*\/\/.*$/, '').trim();
 
   // Extract all bracketed tokens first, e.g. (M10), [93], <BRO>
   const bracketedTokens = [];
@@ -640,7 +664,7 @@ function parseLine(raw) {
 
   const name = nameParts.join(' ').trim() || null;
 
-  return { raw, name, set, number };
+  return { raw, name, set, number, quantity };
 }
 
 function buildUrl(entry, fuzzy=false) {
@@ -654,7 +678,38 @@ function buildUrl(entry, fuzzy=false) {
   return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
 }
 
-const DECK_HEADERS = /^(deck|sideboard|about|commander|companion|maybeboard|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
+const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|about|commander|companion|maybeboard|maybe\s?board|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
+
+function parseNamesWithSections(raw){
+  const seen=new Set();
+  const sections = { main: [], sideboard: [] };
+  let currentSection = 'main';
+  
+  raw.split('\n')
+    .map(l=>l.trim())
+    .filter(l=>l&&!l.startsWith('#'))
+    .forEach(line => {
+      // Check if this is a section header
+      if (DECK_HEADERS.test(line)) {
+        if (/sideboard|side\s?board/i.test(line)) {
+          currentSection = 'sideboard';
+        } else if (/deck|main|commander|companion/i.test(line)) {
+          currentSection = 'main';
+        }
+        return;
+      }
+      
+      const entry = parseLine(line);
+      const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
+      
+      if(!entry.name&&!entry.set||seen.has(key.toLowerCase())) return;
+      seen.add(key.toLowerCase());
+      
+      sections[currentSection].push(entry);
+    });
+  
+  return sections;
+}
 
 function parseNames(raw){
   const seen=new Set();
@@ -687,118 +742,187 @@ function tileOk(el,name,url,scryfallUrl,setCode){
 }
 function tileErr(el){el.remove();}
 
+// Fetch a single card with 3-tier fallback strategy
+async function fetchCard(entry) {
+  let card = null;
+  let usedFallback = false;
+
+  // Primary attempt
+  const url = buildUrl(entry);
+  const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+  const data = await res.json();
+
+  if (res.ok) {
+    card = data;
+  } else {
+    // First retry: fuzzy version of the same query (catches minor typos)
+    await sleep(DELAY);
+    const url2 = buildUrl(entry, true);
+    if (url2 !== url) {
+      const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const data2 = await res2.json();
+      if (res2.ok) { card = data2; }
+    }
+
+    // Second retry: name-only fuzzy (ignores bad set/number)
+    if (!card && entry.name && (entry.set || entry.number)) {
+      await sleep(DELAY);
+      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const data3 = await res3.json();
+      if (!res3.ok) throw new Error(data3.details||'Not found');
+      card = data3;
+      usedFallback = true;
+    } else if (!card) {
+      throw new Error(data.details||'Not found');
+    }
+  }
+
+  // Paper Only check
+  if (paperOnly && card && card.games && !card.games.includes('paper')) {
+    await sleep(DELAY);
+    const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
+    const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+    const sd = await sr.json();
+    if (sr.ok && sd.data && sd.data.length > 0) {
+      card = sd.data[0];
+      usedFallback = true;
+    } else {
+      throw new Error('No paper printing found');
+    }
+  }
+
+  // First Print
+  if (firstPrint && card) {
+    await sleep(DELAY);
+    const gameFilter = paperOnly ? '+game:paper' : '';
+    const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
+    const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+    const fd = await fr.json();
+    if (fr.ok && fd.data && fd.data.length > 0) {
+      const oldest = fd.data[0];
+      if (oldest.id !== card.id) {
+        card = oldest;
+        usedFallback = true;
+      }
+    }
+  }
+
+  card._usedFallback = usedFallback;
+  return card;
+}
+
 document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if(isFetching)return;
   const ta=document.getElementById('card-input');
-  const names=parseNames(ta.value);
-  if(!names.length){
+  const sections = parseNamesWithSections(ta.value);
+  const allEntries = [...sections.main, ...sections.sideboard];
+  
+  if(allEntries.length === 0){
     ta.classList.add('input-error');
     ta.focus();
     setTimeout(()=>ta.classList.remove('input-error'),1000);
     return;
   }
-  isFetching=true;fetchedImages=[];
+  
+  isFetching=true;
+  fetchedImages=[];
+  visualDeckData = { main: [], sideboard: [] };
+  
   const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='Searching…';
   document.getElementById('progress-section').style.display='block';
   document.getElementById('card-grid').innerHTML='';
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
-  document.getElementById('visual-btn').disabled=true;
-  setProgress(0,names.length);
+  document.getElementById('visual-preview-section').style.display='none';
+  setProgress(0,allEntries.length);
+  
   let ok=0,err=0;
-  for(let i=0;i<names.length;i++){
-    const entry=names[i];
+  let currentIndex = 0;
+  
+  // Process main deck
+  for(let i=0;i<sections.main.length;i++){
+    const entry=sections.main[i];
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
-    const tile=makeTile(displayName);setProgress(i,names.length);
+    const tile=makeTile(displayName);
+    setProgress(currentIndex,allEntries.length);
+    
     try{
-      let card = null;
-      let usedFallback = false;
-
-      // Primary attempt
-      const url = buildUrl(entry);
-      const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-      const data = await res.json();
-
-      if (res.ok) {
-        card = data;
-      } else {
-        // First retry: fuzzy version of the same query (catches minor typos)
-        await sleep(DELAY);
-        const url2 = buildUrl(entry, true);
-        if (url2 !== url) {
-          const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-          const data2 = await res2.json();
-          if (res2.ok) { card = data2; }
-        }
-
-        // Second retry: name-only fuzzy (ignores bad set/number)
-        if (!card && entry.name && (entry.set || entry.number)) {
-          await sleep(DELAY);
-          const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-          const data3 = await res3.json();
-          if (!res3.ok) throw new Error(data3.details||'Not found');
-          card = data3;
-          usedFallback = true;
-        } else if (!card) {
-          throw new Error(data.details||'Not found');
-        }
-      }
-
-      // Paper Only check: if card was found but not available in paper,
-      // use /cards/search to find the oldest paper printing instead
-      if (paperOnly && card && card.games && !card.games.includes('paper')) {
-        await sleep(DELAY);
-        const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
-        const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-        const sd = await sr.json();
-        if (sr.ok && sd.data && sd.data.length > 0) {
-          card = sd.data[0];
-          usedFallback = true;
-        } else {
-          throw new Error('No paper printing found');
-        }
-      }
-
-      // First Print: search for the oldest printing of this card
-      // Combines with Paper Only if both are active
-      if (firstPrint && card) {
-        await sleep(DELAY);
-        const gameFilter = paperOnly ? '+game:paper' : '';
-        const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
-        const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-        const fd = await fr.json();
-        if (fr.ok && fd.data && fd.data.length > 0) {
-          const oldest = fd.data[0];
-          // Only swap if it's a different printing
-          if (oldest.id !== card.id) {
-            card = oldest;
-            usedFallback = true;
-          }
-        }
-        // If search fails, silently keep the card we already have
-      }
-
+      const card = await fetchCard(entry);
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
+      
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
       tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
       
-      const fallbackNote = usedFallback ? ` ⚠ alt print used` : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, usedFallback ? 'warn' : 'ok');
+      // Store for visual deck with quantity
+      visualDeckData.main.push({
+        name: card.name,
+        set: card.set,
+        blob: blob,
+        quantity: entry.quantity,
+        imgUrl: imgUrl
+      });
+      
+      const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, card._usedFallback ? 'warn' : 'ok');
       ok++;
     }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
+    currentIndex++;
     await sleep(DELAY);
   }
-  setProgress(names.length,names.length);
+  
+  // Process sideboard
+  for(let i=0;i<sections.sideboard.length;i++){
+    const entry=sections.sideboard[i];
+    const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
+    const tile=makeTile(displayName);
+    setProgress(currentIndex,allEntries.length);
+    
+    try{
+      const card = await fetchCard(entry);
+      const imgUrl=getImg(card,selectedSize);
+      if(!imgUrl)throw new Error('No image for this size');
+      const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
+      const blob=await ir.blob();
+      const ext=selectedSize==='png'?'png':'jpg';
+      
+      fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
+      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
+      
+      // Store for visual deck with quantity
+      visualDeckData.sideboard.push({
+        name: card.name,
+        set: card.set,
+        blob: blob,
+        quantity: entry.quantity,
+        imgUrl: imgUrl
+      });
+      
+      const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, card._usedFallback ? 'warn' : 'ok');
+      ok++;
+    }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
+    currentIndex++;
+    await sleep(DELAY);
+  }
+  
+  setProgress(allEntries.length,allEntries.length);
   document.getElementById('stat-ok').textContent=ok;
   document.getElementById('stat-err').textContent=err;
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
-  document.getElementById('visual-btn').disabled=ok===0;
+  
+  // Generate visual preview
+  if(ok > 0) {
+    await generateVisualPreview();
+    document.getElementById('visual-preview-section').style.display='block';
+    document.getElementById('download-visual-btn').disabled=false;
+  }
+  
   isFetching=false;fb.disabled=false;fb.innerHTML='✦ &nbsp; Summon Cards';
 });
 
@@ -812,73 +936,103 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
 
-// Visual Decklist - Create composite image
-document.getElementById('visual-btn').addEventListener('click', async () => {
-  if (!fetchedImages.length) return;
-  
-  const btn = document.getElementById('visual-btn');
-  btn.disabled = true;
-  btn.textContent = 'Rendering…';
-  
-  // Calculate grid dimensions
+// Generate visual preview (MTGGoldfish style with repeated cards)
+async function generateVisualPreview() {
   const cardsPerRow = 10;
-  const totalCards = fetchedImages.length;
-  const rows = Math.ceil(totalCards / cardsPerRow);
-  
-  // Card dimensions (standard MTG card ratio 63:88)
-  const cardWidth = 488;  // normal size width
-  const cardHeight = 680; // normal size height
+  const cardWidth = 488;
+  const cardHeight = 680;
   const padding = 8;
+  const sectionGap = 40; // Gap between main and sideboard
+  
+  // Expand cards based on quantity
+  const expandedMain = [];
+  visualDeckData.main.forEach(card => {
+    for (let i = 0; i < card.quantity; i++) {
+      expandedMain.push(card);
+    }
+  });
+  
+  const expandedSideboard = [];
+  visualDeckData.sideboard.forEach(card => {
+    for (let i = 0; i < card.quantity; i++) {
+      expandedSideboard.push(card);
+    }
+  });
+  
+  const totalCards = expandedMain.length + expandedSideboard.length;
+  const mainRows = Math.ceil(expandedMain.length / cardsPerRow);
+  const sideRows = Math.ceil(expandedSideboard.length / cardsPerRow);
   
   const canvasWidth = (cardWidth * cardsPerRow) + (padding * (cardsPerRow + 1));
-  const canvasHeight = (cardHeight * rows) + (padding * (rows + 1));
+  const mainHeight = mainRows > 0 ? (cardHeight * mainRows) + (padding * (mainRows + 1)) : 0;
+  const sideHeight = sideRows > 0 ? (cardHeight * sideRows) + (padding * (sideRows + 1)) : 0;
+  const canvasHeight = mainHeight + (sideRows > 0 ? sectionGap + sideHeight : 0);
   
-  // Create canvas
-  const canvas = document.createElement('canvas');
+  const canvas = document.getElementById('visual-preview-canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d');
   
-  // Background - Imperial Violet gradient
+  // Background
   const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
   gradient.addColorStop(0, '#130a1e');
   gradient.addColorStop(1, '#2A123F');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   
-  // Draw cards
-  let loadedCount = 0;
-  const promises = fetchedImages.map((item, index) => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const col = index % cardsPerRow;
-        const row = Math.floor(index / cardsPerRow);
-        const x = padding + (col * (cardWidth + padding));
-        const y = padding + (row * (cardHeight + padding));
-        
-        ctx.drawImage(img, x, y, cardWidth, cardHeight);
-        resolve();
-      };
-      img.onerror = resolve; // Skip failed images
-      img.src = URL.createObjectURL(item.blob);
-    });
+  // Draw main deck
+  for (let i = 0; i < expandedMain.length; i++) {
+    const card = expandedMain[i];
+    const img = await loadImage(card.blob);
+    const col = i % cardsPerRow;
+    const row = Math.floor(i / cardsPerRow);
+    const x = padding + (col * (cardWidth + padding));
+    const y = padding + (row * (cardHeight + padding));
+    ctx.drawImage(img, x, y, cardWidth, cardHeight);
+  }
+  
+  // Draw sideboard label if exists
+  if (expandedSideboard.length > 0) {
+    const labelY = mainHeight + (sectionGap / 2);
+    ctx.fillStyle = '#F1EDF7';
+    ctx.font = '24px Jost';
+    ctx.textAlign = 'center';
+    ctx.fillText('SIDEBOARD', canvasWidth / 2, labelY);
+  }
+  
+  // Draw sideboard
+  for (let i = 0; i < expandedSideboard.length; i++) {
+    const card = expandedSideboard[i];
+    const img = await loadImage(card.blob);
+    const col = i % cardsPerRow;
+    const row = Math.floor(i / cardsPerRow);
+    const x = padding + (col * (cardWidth + padding));
+    const y = mainHeight + sectionGap + padding + (row * (cardHeight + padding));
+    ctx.drawImage(img, x, y, cardWidth, cardHeight);
+  }
+}
+
+function loadImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = URL.createObjectURL(blob);
   });
-  
-  await Promise.all(promises);
-  
-  // Download composite image
+}
+
+// Download visual decklist button
+document.getElementById('download-visual-btn').addEventListener('click', () => {
+  const canvas = document.getElementById('visual-preview-canvas');
   canvas.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `visual-decklist-${Date.now()}.png`;
     a.click();
     URL.revokeObjectURL(a.href);
-    
-    btn.disabled = false;
-    btn.textContent = '⬚ Visual Decklist';
   }, 'image/png');
 });
+
 
 </script>
 </body>
