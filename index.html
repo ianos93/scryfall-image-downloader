@@ -993,15 +993,15 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
 
-// Generate visual preview (MTGGoldfish style - cards side by side, no stacking)
+// Generate visual preview (MTGGoldfish 5-column grid)
 async function generateVisualPreview() {
-  const cardsPerRow = 10;
-  const cardWidth = 244;  // Half size for tighter grid
-  const cardHeight = 340;
-  const padding = 4;
-  const sectionGap = 60;
+  const cardsPerRow = 5;
+  const cardWidth = 488;
+  const cardHeight = 680;
+  const padding = 8;
+  const sectionGap = 80;
   
-  // Expand cards based on quantity (MTGGoldfish shows each copy)
+  // Expand cards based on quantity
   const expandedMain = [];
   visualDeckData.main.forEach(card => {
     for (let i = 0; i < card.quantity; i++) {
