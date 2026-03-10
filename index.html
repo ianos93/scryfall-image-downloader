@@ -254,54 +254,34 @@
   }
   .size-hint { margin-top: 10px; color: rgba(241,237,247,0.55); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
 
-  /* Tab Navigation */
-  .tabs-container { margin-top: 28px; }
-  .tab-nav {
-    display: flex;
-    gap: 8px;
-    margin-bottom: -1px;
-    border-bottom: 1px solid rgba(156,140,185,0.15);
-  }
-  .tab-btn {
-    padding: 10px 24px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: 12px 12px 0 0;
-    color: rgba(198,182,221,0.5);
+  /* Action Buttons (Visual/Individual view switcher) */
+  .btn-action {
+    width: 100%;
+    padding: 16px;
+    background: rgba(20,8,35,0.5);
+    border: 1px solid rgba(156,140,185,0.2);
+    border-radius: 12px;
+    color: rgba(198,182,221,0.6);
     font-family: 'Jost', sans-serif;
-    font-size: 11px;
-    letter-spacing: 0.2em;
+    font-weight: 400;
+    font-size: 13px;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.2s;
-    font-weight: 400;
-    position: relative;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
   }
-  .tab-btn:hover {
+  .btn-action:hover {
+    border-color: var(--lavender);
     color: var(--orchid);
-    background: rgba(72,31,111,0.15);
+    background: rgba(72,31,111,0.2);
   }
-  .tab-btn.active {
-    color: #F1EDF7;
-    background: var(--panel-bg);
-    border-color: rgba(156,140,185,0.15);
-    border-bottom-color: transparent;
-  }
-  .tab-btn.active::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: var(--panel-bg);
-  }
-  .tab-content {
-    display: none;
-  }
-  .tab-content.active {
-    display: block;
+  .btn-action.active {
+    background: #C6B6DD;
+    border-color: rgba(241,237,247,0.3);
+    color: #1a0d2e;
+    box-shadow: 0 4px 20px rgba(198,182,221,0.25);
+    font-weight: 500;
   }
 
 
@@ -472,7 +452,7 @@
   .card-err { color: rgba(156,140,185,0.4); font-size: 11px; text-align: center; padding: 14px; line-height: 1.5; }
 
   .stats-row {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: flex-end;
     flex-wrap: wrap; gap: 16px;
     margin-top: 20px; padding-top: 20px;
     border-top: 1px solid rgba(156,140,185,0.1);
@@ -562,47 +542,44 @@
     <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
   </div>
 
-  <div class="tabs-container" id="results-tabs" style="display:none;">
-    <div class="tab-nav">
-      <button class="tab-btn active" data-tab="visual">Visual Decklist</button>
-      <button class="tab-btn" data-tab="individual">Individual Cards</button>
+  <div class="results-actions" id="results-actions" style="display:none;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 28px;">
+      <button class="btn-action active" id="btn-individual">⊞ &nbsp; Individual Cards</button>
+      <button class="btn-action" id="btn-visual">⬚ &nbsp; Visual Decklist</button>
     </div>
+  </div>
 
-    <div class="tab-content active" id="tab-visual">
-      <div class="float-card" style="margin-top:0;">
-        <div class="card-label">Preview</div>
-        <div id="visual-preview-canvas-container" style="max-height: 600px; overflow-y: auto; background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px;">
-          <canvas id="visual-preview-canvas" style="width: 100%; height: auto; display: block; border-radius: 4px;"></canvas>
-        </div>
-        <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 11px; letter-spacing: 0.1em; color: rgba(241,237,247,0.6);">
-            <input type="checkbox" id="transparent-bg-checkbox" style="cursor: pointer;" />
-            <span>Transparent Background</span>
-          </label>
-          <button class="btn-zip" id="download-visual-btn" disabled>⬇ Download Image</button>
-        </div>
+  <div id="tab-visual" style="display:none; margin-top: 20px;">
+    <div class="float-card">
+      <div class="card-label">Preview</div>
+      <div id="visual-preview-canvas-container" style="max-height: 600px; overflow-y: auto; background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px;">
+        <canvas id="visual-preview-canvas" style="width: 100%; height: auto; display: block; border-radius: 4px;"></canvas>
       </div>
-    </div>
-
-    <div class="tab-content" id="tab-individual">
-      <div class="float-card" style="margin-top:0;">
-        <div class="prog-row">
-          <span style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
-          <span id="progress-count">0 / 0</span>
-        </div>
-        <div class="prog-track"><div class="prog-fill" id="progress-bar"></div></div>
-        <div id="log"></div>
-        <div id="card-grid"></div>
-        <div class="stats-row" id="stats-bar" style="display:none;">
-          <div class="stat-grp">
-            <div class="stat"><b id="stat-ok">0</b> found</div>
-            <div class="stat"><b class="miss" id="stat-err">0</b> failed</div>
-          </div>
-          <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
-        </div>
+      <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
+        <button class="option-toggle" id="transparent-bg-toggle">
+          <span class="option-pip"></span>
+          Transparent Background
+        </button>
+        <button class="btn-zip" id="download-visual-btn" disabled>⬇ Download Image</button>
       </div>
     </div>
   </div>
+
+  <div id="tab-individual" style="display:none; margin-top: 20px;">
+    <div class="float-card">
+      <div class="prog-row">
+        <span style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
+        <span id="progress-count">0 / 0</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="progress-bar"></div></div>
+      <div id="log"></div>
+      <div id="card-grid"></div>
+      <div class="stats-row" id="stats-bar" style="display:none;">
+        <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+      </div>
+    </div>
+  </div>
+
 
 </div>
 
@@ -628,16 +605,21 @@ document.getElementById('firstprint-toggle').addEventListener('click',()=>{
   document.getElementById('firstprint-toggle').classList.toggle('active',firstPrint);
 });
 
-// Tab switching
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const targetTab = btn.dataset.tab;
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + targetTab).classList.add('active');
-  });
+// Action button switching (Visual / Individual)
+document.getElementById('btn-visual').addEventListener('click', () => {
+  document.getElementById('btn-visual').classList.add('active');
+  document.getElementById('btn-individual').classList.remove('active');
+  document.getElementById('tab-visual').style.display = 'block';
+  document.getElementById('tab-individual').style.display = 'none';
 });
+
+document.getElementById('btn-individual').addEventListener('click', () => {
+  document.getElementById('btn-individual').classList.add('active');
+  document.getElementById('btn-visual').classList.remove('active');
+  document.getElementById('tab-individual').style.display = 'block';
+  document.getElementById('tab-visual').style.display = 'none';
+});
+
 
 
 const ua=document.getElementById('upload-area'),fi=document.getElementById('file-input');
@@ -904,7 +886,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   visualDeckData = { main: [], sideboard: [] };
   
   const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='Searching…';
-  document.getElementById('results-tabs').style.display='block';
+  document.getElementById('results-actions').style.display='block';
+  document.getElementById('tab-individual').style.display='block';
+  document.getElementById('tab-visual').style.display='none';
+  document.getElementById('btn-individual').classList.add('active');
+  document.getElementById('btn-visual').classList.remove('active');
   document.getElementById('card-grid').innerHTML='';
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
@@ -985,8 +971,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   }
   
   setProgress(allEntries.length,allEntries.length);
-  document.getElementById('stat-ok').textContent=ok;
-  document.getElementById('stat-err').textContent=err;
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
   
@@ -1009,30 +993,35 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
 
-// Generate visual preview (MTGGoldfish style with stacked repeated cards)
+// Generate visual preview (MTGGoldfish style - cards side by side, no stacking)
 async function generateVisualPreview() {
   const cardsPerRow = 10;
-  const cardWidth = 488;
-  const cardHeight = 680;
-  const padding = 8;
-  const sectionGap = 60; // Gap between main and sideboard
-  const stackOffset = 20; // Pixel offset for stacking cards (like MTGGoldfish)
+  const cardWidth = 244;  // Half size for tighter grid
+  const cardHeight = 340;
+  const padding = 4;
+  const sectionGap = 60;
   
-  // Cards already have quantity info from fetch
-  const mainGroups = visualDeckData.main;
-  const sideGroups = visualDeckData.sideboard;
+  // Expand cards based on quantity (MTGGoldfish shows each copy)
+  const expandedMain = [];
+  visualDeckData.main.forEach(card => {
+    for (let i = 0; i < card.quantity; i++) {
+      expandedMain.push(card);
+    }
+  });
   
-  const totalSlots = mainGroups.length + sideGroups.length;
-  const mainRows = Math.ceil(mainGroups.length / cardsPerRow);
-  const sideRows = Math.ceil(sideGroups.length / cardsPerRow);
+  const expandedSideboard = [];
+  visualDeckData.sideboard.forEach(card => {
+    for (let i = 0; i < card.quantity; i++) {
+      expandedSideboard.push(card);
+    }
+  });
   
-  // Calculate height accounting for stacked cards
-  const maxStackInMain = mainGroups.length > 0 ? Math.max(...mainGroups.map(g => g.quantity)) : 0;
-  const maxStackInSide = sideGroups.length > 0 ? Math.max(...sideGroups.map(g => g.quantity)) : 0;
+  const mainRows = Math.ceil(expandedMain.length / cardsPerRow);
+  const sideRows = Math.ceil(expandedSideboard.length / cardsPerRow);
   
   const canvasWidth = (cardWidth * cardsPerRow) + (padding * (cardsPerRow + 1));
-  const mainHeight = mainRows > 0 ? (cardHeight * mainRows) + (padding * (mainRows + 1)) + (stackOffset * (maxStackInMain - 1)) : 0;
-  const sideHeight = sideRows > 0 ? (cardHeight * sideRows) + (padding * (sideRows + 1)) + (stackOffset * (maxStackInSide - 1)) : 0;
+  const mainHeight = mainRows > 0 ? (cardHeight * mainRows) + (padding * (mainRows + 1)) : 0;
+  const sideHeight = sideRows > 0 ? (cardHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = mainHeight + (sideRows > 0 ? sectionGap + sideHeight : 0);
   
   const canvas = document.getElementById('visual-preview-canvas');
@@ -1040,8 +1029,8 @@ async function generateVisualPreview() {
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d');
   
-  // Background (will be cleared if transparent option is checked)
-  const isTransparent = document.getElementById('transparent-bg-checkbox').checked;
+  // Background
+  const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
   if (!isTransparent) {
     const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
     gradient.addColorStop(0, '#130a1e');
@@ -1051,24 +1040,18 @@ async function generateVisualPreview() {
   }
   
   // Draw main deck
-  for (let i = 0; i < mainGroups.length; i++) {
-    const group = mainGroups[i];
-    const img = await loadImage(group.blob);
+  for (let i = 0; i < expandedMain.length; i++) {
+    const card = expandedMain[i];
+    const img = await loadImage(card.blob);
     const col = i % cardsPerRow;
     const row = Math.floor(i / cardsPerRow);
-    const baseX = padding + (col * (cardWidth + padding));
-    const baseY = padding + (row * (cardHeight + padding));
-    
-    // Draw stacked cards (MTGGoldfish style - bottom to top with offset)
-    for (let stack = 0; stack < group.quantity; stack++) {
-      const x = baseX + (stack * stackOffset);
-      const y = baseY + (stack * stackOffset);
-      ctx.drawImage(img, x, y, cardWidth, cardHeight);
-    }
+    const x = padding + (col * (cardWidth + padding));
+    const y = padding + (row * (cardHeight + padding));
+    ctx.drawImage(img, x, y, cardWidth, cardHeight);
   }
   
-  // Draw sideboard label if exists
-  if (sideGroups.length > 0) {
+  // Draw sideboard label
+  if (expandedSideboard.length > 0) {
     const labelY = mainHeight + (sectionGap / 2) + 10;
     ctx.fillStyle = '#F1EDF7';
     ctx.font = '28px Jost';
@@ -1078,20 +1061,14 @@ async function generateVisualPreview() {
   }
   
   // Draw sideboard
-  for (let i = 0; i < sideGroups.length; i++) {
-    const group = sideGroups[i];
-    const img = await loadImage(group.blob);
+  for (let i = 0; i < expandedSideboard.length; i++) {
+    const card = expandedSideboard[i];
+    const img = await loadImage(card.blob);
     const col = i % cardsPerRow;
     const row = Math.floor(i / cardsPerRow);
-    const baseX = padding + (col * (cardWidth + padding));
-    const baseY = mainHeight + sectionGap + padding + (row * (cardHeight + padding));
-    
-    // Draw stacked cards
-    for (let stack = 0; stack < group.quantity; stack++) {
-      const x = baseX + (stack * stackOffset);
-      const y = baseY + (stack * stackOffset);
-      ctx.drawImage(img, x, y, cardWidth, cardHeight);
-    }
+    const x = padding + (col * (cardWidth + padding));
+    const y = mainHeight + sectionGap + padding + (row * (cardHeight + padding));
+    ctx.drawImage(img, x, y, cardWidth, cardHeight);
   }
 }
 
@@ -1117,7 +1094,9 @@ document.getElementById('download-visual-btn').addEventListener('click', () => {
 });
 
 // Regenerate preview when transparent background option changes
-document.getElementById('transparent-bg-checkbox').addEventListener('change', () => {
+document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
+  const btn = document.getElementById('transparent-bg-toggle');
+  btn.classList.toggle('active');
   if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
     generateVisualPreview();
   }
