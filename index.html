@@ -486,9 +486,15 @@ function stripBrackets(s) {
   return s.replace(/[\(\)\[\]<>]/g, '').trim();
 }
 
-// Is this token a set code? 2-6 alphanumeric, at least one letter
+// Is this token a set code when bracketed? 2-6 alphanumeric, at least one letter
 function isSetCode(s) {
   return /^[a-zA-Z0-9]{2,6}$/.test(s) && /[a-zA-Z]/.test(s);
+}
+
+// Is this token a BARE (unbracketed) set code?
+// Must be all-uppercase (e.g. M10, BRO, MH3) to avoid matching card name words like "Bolt", "Fire"
+function isBareSetCode(s) {
+  return /^[A-Z][A-Z0-9]{1,5}$/.test(s);
 }
 
 // Is this token a collector number? digits, optional letter suffix (e.g. 123a)
@@ -542,7 +548,8 @@ function parseLine(raw) {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     if (!number && isCollectorNum(p)) { number = p; continue; }
-    if (!set && isSetCode(p) && i > 0) { set = p.toLowerCase(); continue; }
+    // Only treat bare (unbracketed) token as set code if it's ALL-CAPS like M10, BRO, MH3
+    if (!set && isBareSetCode(p) && i > 0) { set = p.toLowerCase(); continue; }
     // Once we hit something that's clearly a name word, stop
     nameParts.unshift(...parts.slice(0, i + 1));
     break;
@@ -553,18 +560,19 @@ function parseLine(raw) {
   return { raw, name, set, number };
 }
 
-function buildUrl(entry) {
+function buildUrl(entry, fuzzy=false) {
+  const method = fuzzy ? 'fuzzy' : 'exact';
   // set + collector number → /cards/:code/:number
   if (entry.set && entry.number && !entry.name)
     return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
   // name + set + number → /cards/:code/:number (most precise)
   if (entry.set && entry.number && entry.name)
     return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  // name + set → /cards/named?fuzzy=name&set=set
+  // name + set → /cards/named?exact=name&set=set
   if (entry.set && entry.name)
-    return `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}&set=${entry.set}`;
-  // name only → /cards/named?fuzzy=name
-  return `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`;
+    return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}`;
+  // name only → /cards/named?exact=name (precise), fuzzy as fallback
+  return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
 }
 
 const DECK_HEADERS = /^(deck|sideboard|about|commander|companion|maybeboard|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
@@ -623,23 +631,34 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       let card = null;
       let usedFallback = false;
 
-      // Primary attempt — set-specific or exact URL
-      const url=buildUrl(entry);
-      const res=await fetch(url,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-      const data=await res.json();
+      // Primary attempt
+      const url = buildUrl(entry);
+      const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const data = await res.json();
 
-      if(res.ok){
+      if (res.ok) {
         card = data;
-      } else if(entry.name && (entry.set || entry.number)){
-        // Fallback — try fuzzy name only, ignore set/number
-        await sleep(DELAY);
-        const fb2=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-        const data2=await fb2.json();
-        if(!fb2.ok) throw new Error(data2.details||'Not found');
-        card = data2;
-        usedFallback = true;
       } else {
-        throw new Error(data.details||'Not found');
+        // First retry: fuzzy version of the same query (catches minor typos)
+        await sleep(DELAY);
+        const url2 = buildUrl(entry, true);
+        if (url2 !== url) {
+          const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+          const data2 = await res2.json();
+          if (res2.ok) { card = data2; }
+        }
+
+        // Second retry: name-only fuzzy (ignores bad set/number)
+        if (!card && entry.name && (entry.set || entry.number)) {
+          await sleep(DELAY);
+          const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+          const data3 = await res3.json();
+          if (!res3.ok) throw new Error(data3.details||'Not found');
+          card = data3;
+          usedFallback = true;
+        } else if (!card) {
+          throw new Error(data.details||'Not found');
+        }
       }
 
       const imgUrl=getImg(card,selectedSize);
