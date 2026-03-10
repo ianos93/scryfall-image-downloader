@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Scryfall · Luminary</title>
-<link rel="icon" type="image/png" href="favicon.png" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23130a1e'/%3E%3Cpolygon points='16,4 26,13 16,28 6,13' fill='%23481F6F' stroke='%239C8CB9' stroke-width='1'/%3E%3Cpolygon points='16,4 26,13 16,16 6,13' fill='%23C6B6DD' opacity='0.9'/%3E%3Cpolygon points='16,16 26,13 16,28' fill='%23481F6F' opacity='0.7'/%3E%3Cpolygon points='16,16 6,13 16,28' fill='%239C8CB9' opacity='0.5'/%3E%3C/svg%3E" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -382,6 +382,7 @@
   }
   .lok { color: rgba(130,195,255,0.85); font-family: 'Jost', sans-serif; }
   .lerr { color: rgba(255,120,140,0.85); font-family: 'Jost', sans-serif; }
+  .lwarn { color: rgba(255,200,90,0.85); font-family: 'Jost', sans-serif; }
 
   /* ── Themed scrollbar ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -583,7 +584,7 @@ function parseNames(raw){
 }
 function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null;if(card.card_faces?.[0]?.image_uris)return card.card_faces[0].image_uris[size]||null;return null;}
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
-function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
 
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
@@ -619,17 +620,38 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
     const tile=makeTile(displayName);setProgress(i,names.length);
     try{
+      let card = null;
+      let usedFallback = false;
+
+      // Primary attempt — set-specific or exact URL
       const url=buildUrl(entry);
       const res=await fetch(url,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-      const card=await res.json();
-      if(!res.ok)throw new Error(card.details||'Not found');
+      const data=await res.json();
+
+      if(res.ok){
+        card = data;
+      } else if(entry.name && (entry.set || entry.number)){
+        // Fallback — try fuzzy name only, ignore set/number
+        await sleep(DELAY);
+        const fb2=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+        const data2=await fb2.json();
+        if(!fb2.ok) throw new Error(data2.details||'Not found');
+        card = data2;
+        usedFallback = true;
+      } else {
+        throw new Error(data.details||'Not found');
+      }
+
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
-      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);log(`✓  ${card.name} (${card.set.toUpperCase()})`, 'ok');ok++;
+      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
+      const fallbackNote = usedFallback ? ` ⚠ set not found, used latest` : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, usedFallback ? 'warn' : 'ok');
+      ok++;
     }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
