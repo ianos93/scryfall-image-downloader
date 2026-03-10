@@ -196,6 +196,16 @@
     border-color: rgba(156,140,185,0.35);
     box-shadow: 0 0 0 3px rgba(150,100,220,0.1);
   }
+  textarea.input-error {
+    border-color: rgba(255,100,100,0.6) !important;
+    box-shadow: 0 0 0 3px rgba(255,80,80,0.15) !important;
+    animation: shakeInput 0.35s ease;
+  }
+  @keyframes shakeInput {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    60% { transform: translateX(6px); }
+  }
   textarea::placeholder { color: rgba(198,182,221,0.35); font-style: italic; }
 
   .upload-zone {
@@ -357,8 +367,8 @@
     font-family: 'Jost', sans-serif;
     letter-spacing: 0;
   }
-  .badge-ok { background: rgba(72,31,111,0.9); color: var(--lavender); border: 1px solid rgba(156,140,185,0.3); box-shadow: 0 0 8px var(--glow); }
-  .badge-err { background: rgba(80,20,60,0.9); color: #d080c0; }
+  .badge-ok { background: rgba(60,180,120,0.2); color: #7de8b0; border: 1px solid rgba(100,220,160,0.4); }
+  .badge-err { background: rgba(220,80,80,0.2); color: #f0908a; border: 1px solid rgba(240,120,100,0.4); }
 
   .stats-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -378,8 +388,8 @@
     max-height: 80px; overflow-y: auto; margin-bottom: 20px;
     letter-spacing: 0.05em;
   }
-  .lok { color: rgba(120,160,220,0.5); }
-  .lerr { color: rgba(200,100,180,0.5); }
+  .lok { color: rgba(130,195,255,0.85); }
+  .lerr { color: rgba(255,120,140,0.85); }
 
   /* ── Themed scrollbar ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -500,14 +510,23 @@ function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
 
-function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
-function tileOk(el,name,url){el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div><div class="badge badge-ok">✓</div>`;}
+function tileOk(el,name,url,scryfallUrl){
+  el.style.cursor='pointer';
+  el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div><div class="badge badge-ok">✓</div>`;
+  if(scryfallUrl) el.addEventListener('click',()=>window.open(scryfallUrl,'_blank'));
+}
 function tileErr(el,name,msg){el.innerHTML=`<div class="card-err"><div style="font-size:14px;margin-bottom:6px;color:var(--orchid);font-family:'Jost',sans-serif;font-weight:400">✕</div><div style="color:var(--orchid);font-family:'Jost',sans-serif;font-size:11px">${name}</div><div style="margin-top:4px;opacity:.7;font-family:'Jost',sans-serif;font-size:10px">${msg}</div></div><div class="badge badge-err">✕</div>`;}
 
 document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if(isFetching)return;
-  const names=parseNames(document.getElementById('card-input').value);
-  if(!names.length){alert('Enter at least one card name.');return;}
+  const ta=document.getElementById('card-input');
+  const names=parseNames(ta.value);
+  if(!names.length){
+    ta.classList.add('input-error');
+    ta.focus();
+    setTimeout(()=>ta.classList.remove('input-error'),1000);
+    return;
+  }
   isFetching=true;fetchedImages=[];
   const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.textContent='Searching…';
   document.getElementById('progress-section').style.display='block';
@@ -529,7 +548,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
-      tileOk(tile,card.name,imgUrl);log(`✓  ${card.name}`,'ok');ok++;
+      tileOk(tile,card.name,imgUrl,card.scryfall_uri);log(`✓  ${card.name}`,'ok');ok++;
     }catch(e){tileErr(tile,name,e.message);log(`✗ ${name}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
