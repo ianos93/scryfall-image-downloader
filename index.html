@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Scryfall · Luminary</title>
-<link rel="icon" type="image/png" href="favicon.png" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23130a1e'/%3E%3Cpolygon points='16,4 26,13 16,28 6,13' fill='%23481F6F' stroke='%239C8CB9' stroke-width='1'/%3E%3Cpolygon points='16,4 26,13 16,16 6,13' fill='%23C6B6DD' opacity='0.9'/%3E%3Cpolygon points='16,16 26,13 16,28' fill='%23481F6F' opacity='0.7'/%3E%3Cpolygon points='16,16 6,13 16,28' fill='%239C8CB9' opacity='0.5'/%3E%3C/svg%3E" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -480,6 +480,92 @@ fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+// Normalise any bracket style to its inner content
+function stripBrackets(s) {
+  return s.replace(/[\(\)\[\]<>]/g, '').trim();
+}
+
+// Is this token a set code? 2-6 alphanumeric, at least one letter
+function isSetCode(s) {
+  return /^[a-zA-Z0-9]{2,6}$/.test(s) && /[a-zA-Z]/.test(s);
+}
+
+// Is this token a collector number? digits, optional letter suffix (e.g. 123a)
+function isCollectorNum(s) {
+  return /^\d+[a-zA-Z]?$/.test(s);
+}
+
+// Parses a line into { raw, name, set, number }
+// Handles all these formats (brackets optional, order flexible):
+//   Lightning Bolt
+//   Lightning Bolt M10
+//   Lightning Bolt (M10)
+//   Lightning Bolt [M10]
+//   Lightning Bolt <M10>
+//   Lightning Bolt (M10) 93
+//   Lightning Bolt (M10) #93
+//   Lightning Bolt 93 (M10)
+//   Lightning Bolt #93 (M10)
+//   M10 93  /  93 M10
+function parseLine(raw) {
+  let l = raw
+    .replace(/^\d+\s*[xX×]\s*/, '')
+    .replace(/^\d+\s+/, '')
+    .replace(/\s*\/\/.*$/, '')
+    .trim();
+
+  // Extract all bracketed tokens first, e.g. (M10), [93], <BRO>
+  const bracketedTokens = [];
+  l = l.replace(/[\(\[<][^\)\]>]*[\)\]>]/g, m => {
+    bracketedTokens.push(stripBrackets(m));
+    return ' ';
+  }).replace(/\s+/g, ' ').trim();
+
+  // Also handle bare #number anywhere
+  let bareNumber = null;
+  l = l.replace(/#(\d+[a-zA-Z]?)/g, (_, n) => { bareNumber = n; return ''; }).replace(/\s+/g, ' ').trim();
+
+  // Classify bracketed tokens into set codes and numbers
+  let set = null, number = bareNumber;
+  for (const tok of bracketedTokens) {
+    if (isCollectorNum(tok) && !number) number = tok;
+    else if (isSetCode(tok) && !set) set = tok.toLowerCase();
+  }
+
+  // What remains in l is potentially "name" or "name SET" or "name SET 93" or "SET 93" etc.
+  // Split remaining tokens and classify trailing ones
+  const parts = l.split(/\s+/).filter(Boolean);
+  const nameParts = [];
+
+  // Walk from the end, pulling off set/number tokens we haven't found yet
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (!number && isCollectorNum(p)) { number = p; continue; }
+    if (!set && isSetCode(p) && i > 0) { set = p.toLowerCase(); continue; }
+    // Once we hit something that's clearly a name word, stop
+    nameParts.unshift(...parts.slice(0, i + 1));
+    break;
+  }
+
+  const name = nameParts.join(' ').trim() || null;
+
+  return { raw, name, set, number };
+}
+
+function buildUrl(entry) {
+  // set + collector number → /cards/:code/:number
+  if (entry.set && entry.number && !entry.name)
+    return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
+  // name + set + number → /cards/:code/:number (most precise)
+  if (entry.set && entry.number && entry.name)
+    return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
+  // name + set → /cards/named?fuzzy=name&set=set
+  if (entry.set && entry.name)
+    return `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}&set=${entry.set}`;
+  // name only → /cards/named?fuzzy=name
+  return `https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`;
+}
+
 const DECK_HEADERS = /^(deck|sideboard|about|commander|companion|maybeboard|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
 
 function parseNames(raw){
@@ -487,15 +573,11 @@ function parseNames(raw){
   return raw.split('\n')
     .map(l=>l.trim())
     .filter(l=>l&&!l.startsWith('#'))
-    .map(l=>l
-      .replace(/^\d+\s*[xX×]\s*/,'')   // "2x ", "2X ", "4× "
-      .replace(/^\d+\s+/,'')            // "2 Lightning Bolt"
-      .replace(/\s*\/\/.*$/,'')         // "Fire // Ice" → "Fire"
-      .trim()
-    )
-    .filter(l=>{
-      if(!l||DECK_HEADERS.test(l)||seen.has(l.toLowerCase()))return false;
-      seen.add(l.toLowerCase());
+    .map(parseLine)
+    .filter(e=>{
+      const key=(e.name||'')+':'+(e.set||'')+':'+(e.number||'');
+      if(!e.name&&!e.set||DECK_HEADERS.test(e.name||'')||seen.has(key.toLowerCase()))return false;
+      seen.add(key.toLowerCase());
       return true;
     });
 }
@@ -533,9 +615,12 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(0,names.length);
   let ok=0,err=0;
   for(let i=0;i<names.length;i++){
-    const name=names[i];const tile=makeTile(name);setProgress(i,names.length);
+    const entry=names[i];
+    const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
+    const tile=makeTile(displayName);setProgress(i,names.length);
     try{
-      const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const url=buildUrl(entry);
+      const res=await fetch(url,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
       const card=await res.json();
       if(!res.ok)throw new Error(card.details||'Not found');
       const imgUrl=getImg(card,selectedSize);
@@ -543,9 +628,9 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
-      fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
-      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);log(`✓  ${card.name}`,'ok');ok++;
-    }catch(e){tileErr(tile);log(`✕  ${name}: ${e.message}`,'e');err++;}
+      fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
+      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);log(`✓  ${card.name} (${card.set.toUpperCase()})`, 'ok');ok++;
+    }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
   setProgress(names.length,names.length);
