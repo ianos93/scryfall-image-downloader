@@ -799,6 +799,43 @@ function tileOk(el,name,url,scryfallUrl,setCode){
 }
 function tileErr(el){el.remove();}
 
+// Sort cards by type then CMC
+function sortCards(cardList) {
+  const typeOrder = {
+    'Creature': 0,
+    'Instant': 1,
+    'Sorcery': 2,
+    'Enchantment': 3,
+    'Artifact': 4,
+    'Planeswalker': 5,
+    'Land': 6
+  };
+  
+  return cardList.sort((a, b) => {
+    // Get primary type (first type in the type_line)
+    const aType = a.types && a.types[0] ? a.types[0] : 'Unknown';
+    const bType = b.types && b.types[0] ? b.types[0] : 'Unknown';
+    
+    const aTypeOrder = typeOrder[aType] !== undefined ? typeOrder[aType] : 99;
+    const bTypeOrder = typeOrder[bType] !== undefined ? typeOrder[bType] : 99;
+    
+    // First sort by type
+    if (aTypeOrder !== bTypeOrder) {
+      return aTypeOrder - bTypeOrder;
+    }
+    
+    // Then sort by CMC within same type
+    const aCmc = a.cmc || 0;
+    const bCmc = b.cmc || 0;
+    if (aCmc !== bCmc) {
+      return aCmc - bCmc;
+    }
+    
+    // Finally alphabetically by name
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // Fetch a single card with 3-tier fallback strategy
 async function fetchCard(entry) {
   let card = null;
@@ -924,7 +961,9 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         set: card.set,
         blob: blob,
         quantity: entry.quantity,
-        imgUrl: imgUrl
+        imgUrl: imgUrl,
+        types: card.types || [],
+        cmc: card.cmc || 0
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
@@ -959,7 +998,9 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         set: card.set,
         blob: blob,
         quantity: entry.quantity,
-        imgUrl: imgUrl
+        imgUrl: imgUrl,
+        types: card.types || [],
+        cmc: card.cmc || 0
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
@@ -974,8 +1015,49 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
   
-  // Generate visual preview
+  // Sort cards by type and CMC
   if(ok > 0) {
+    sortCards(visualDeckData.main);
+    sortCards(visualDeckData.sideboard);
+    
+    // Rebuild individual cards grid in sorted order
+    const grid = document.getElementById('card-grid');
+    grid.innerHTML = '';
+    
+    // Add sorted main deck cards
+    visualDeckData.main.forEach(card => {
+      for (let i = 0; i < card.quantity; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'card-item';
+        tile.style.opacity = '1';
+        tile.style.transform = 'translateY(0)';
+        const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
+        tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
+        tile.style.cursor = 'pointer';
+        const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+        tile.addEventListener('click', open);
+        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+        grid.appendChild(tile);
+      }
+    });
+    
+    // Add sorted sideboard cards
+    visualDeckData.sideboard.forEach(card => {
+      for (let i = 0; i < card.quantity; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'card-item';
+        tile.style.opacity = '1';
+        tile.style.transform = 'translateY(0)';
+        const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
+        tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
+        tile.style.cursor = 'pointer';
+        const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+        tile.addEventListener('click', open);
+        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+        grid.appendChild(tile);
+      }
+    });
+    
     await generateVisualPreview();
     document.getElementById('download-visual-btn').disabled=false;
   }
@@ -1000,7 +1082,7 @@ async function generateVisualPreview() {
   const cardWidth = 488;
   const cardHeight = 680;
   const stackOffsetY = 100;  // Vertical offset between stacked cards
-  const padding = 8;
+  const padding = 12;
   const sectionGap = 80;
   
   // Create stacks of up to 4 cards each
