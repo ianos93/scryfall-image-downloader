@@ -350,6 +350,7 @@
   .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 28px; overflow: hidden; }
   .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
 
+
   #card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
@@ -510,7 +511,7 @@
     <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
   </div>
 
-  <div id="progress-section">
+  <div id="progress-section" style="display:none;">
     <div class="float-card">
       <div class="prog-row">
         <span style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
@@ -524,7 +525,10 @@
           <div class="stat"><b id="stat-ok">0</b> found</div>
           <div class="stat"><b class="miss" id="stat-err">0</b> failed</div>
         </div>
-        <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+        <div style="display:flex;gap:12px;">
+          <button class="btn-zip" id="visual-btn" disabled>⬚ Visual Decklist</button>
+          <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+        </div>
       </div>
     </div>
   </div>
@@ -700,6 +704,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
+  document.getElementById('visual-btn').disabled=true;
   setProgress(0,names.length);
   let ok=0,err=0;
   for(let i=0;i<names.length;i++){
@@ -781,6 +786,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
       tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
+      
       const fallbackNote = usedFallback ? ` ⚠ alt print used` : '';
       log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, usedFallback ? 'warn' : 'ok');
       ok++;
@@ -792,6 +798,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('stat-err').textContent=err;
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
+  document.getElementById('visual-btn').disabled=ok===0;
   isFetching=false;fb.disabled=false;fb.innerHTML='✦ &nbsp; Summon Cards';
 });
 
@@ -804,6 +811,75 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   a.download=`scryfall-${selectedSize}.zip`;a.click();URL.revokeObjectURL(a.href);
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
+
+// Visual Decklist - Create composite image
+document.getElementById('visual-btn').addEventListener('click', async () => {
+  if (!fetchedImages.length) return;
+  
+  const btn = document.getElementById('visual-btn');
+  btn.disabled = true;
+  btn.textContent = 'Rendering…';
+  
+  // Calculate grid dimensions
+  const cardsPerRow = 10;
+  const totalCards = fetchedImages.length;
+  const rows = Math.ceil(totalCards / cardsPerRow);
+  
+  // Card dimensions (standard MTG card ratio 63:88)
+  const cardWidth = 488;  // normal size width
+  const cardHeight = 680; // normal size height
+  const padding = 8;
+  
+  const canvasWidth = (cardWidth * cardsPerRow) + (padding * (cardsPerRow + 1));
+  const canvasHeight = (cardHeight * rows) + (padding * (rows + 1));
+  
+  // Create canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d');
+  
+  // Background - Imperial Violet gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+  gradient.addColorStop(0, '#130a1e');
+  gradient.addColorStop(1, '#2A123F');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  
+  // Draw cards
+  let loadedCount = 0;
+  const promises = fetchedImages.map((item, index) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const col = index % cardsPerRow;
+        const row = Math.floor(index / cardsPerRow);
+        const x = padding + (col * (cardWidth + padding));
+        const y = padding + (row * (cardHeight + padding));
+        
+        ctx.drawImage(img, x, y, cardWidth, cardHeight);
+        resolve();
+      };
+      img.onerror = resolve; // Skip failed images
+      img.src = URL.createObjectURL(item.blob);
+    });
+  });
+  
+  await Promise.all(promises);
+  
+  // Download composite image
+  canvas.toBlob((blob) => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `visual-decklist-${Date.now()}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    
+    btn.disabled = false;
+    btn.textContent = '⬚ Visual Decklist';
+  }, 'image/png');
+});
+
 </script>
 </body>
 </html>
