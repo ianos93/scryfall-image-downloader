@@ -467,7 +467,23 @@ fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-function parseNames(raw){return raw.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));}
+function parseNames(raw){
+  const seen=new Set();
+  return raw.split('\n')
+    .map(l=>l.trim())
+    .filter(l=>l&&!l.startsWith('#'))
+    .map(l=>l
+      .replace(/^\d+\s*[xX×]\s*/,'')   // "2x ", "2X ", "4× "
+      .replace(/^\d+\s+/,'')            // "2 Lightning Bolt"
+      .replace(/\s*\/\/.*$/,'')         // "Fire // Ice" → "Fire"
+      .trim()
+    )
+    .filter(l=>{
+      if(!l||seen.has(l.toLowerCase()))return false;
+      seen.add(l.toLowerCase());
+      return true;
+    });
+}
 function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null;if(card.card_faces?.[0]?.image_uris)return card.card_faces[0].image_uris[size]||null;return null;}
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
