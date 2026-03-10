@@ -388,8 +388,8 @@
     max-height: 80px; overflow-y: auto; margin-bottom: 20px;
     letter-spacing: 0.05em;
   }
-  .lok { color: rgba(130,195,255,0.85); }
-  .lerr { color: rgba(255,120,140,0.85); }
+  .lok { color: rgba(130,195,255,0.85); font-family: 'Jost', sans-serif; }
+  .lerr { color: rgba(255,120,140,0.85); font-family: 'Jost', sans-serif; }
 
   /* ── Themed scrollbar ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -510,6 +510,7 @@ function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
 
+function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
 function tileOk(el,name,url,scryfallUrl){
   el.style.cursor='pointer';
   el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div><div class="badge badge-ok">✓</div>`;
@@ -528,7 +529,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     return;
   }
   isFetching=true;fetchedImages=[];
-  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.textContent='Searching…';
+  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='Searching…';
   document.getElementById('progress-section').style.display='block';
   document.getElementById('card-grid').innerHTML='';
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
@@ -549,7 +550,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
       tileOk(tile,card.name,imgUrl,card.scryfall_uri);log(`✓  ${card.name}`,'ok');ok++;
-    }catch(e){tileErr(tile,name,e.message);log(`✗ ${name}: ${e.message}`,'e');err++;}
+    }catch(e){tileErr(tile,name,e.message);log(`✕  ${name}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
   setProgress(names.length,names.length);
