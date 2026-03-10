@@ -498,6 +498,11 @@
         Paper Only
       </button>
       <span class="option-hint">Exclude digital-only prints (MTGO, Arena)</span>
+      <button class="option-toggle" id="firstprint-toggle" style="margin-left:8px;">
+        <span class="option-pip"></span>
+        First Print
+      </button>
+      <span class="option-hint">Fetch the oldest printing of each card</span>
     </div>
   </div>
 
@@ -527,7 +532,7 @@
 
 <script>
 const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
-let selectedSize='normal',fetchedImages=[],isFetching=false,paperOnly=false;
+let selectedSize='normal',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
 
 document.getElementById('size-options').addEventListener('click',e=>{
   const b=e.target.closest('.toggle');if(!b)return;
@@ -539,6 +544,11 @@ document.getElementById('size-options').addEventListener('click',e=>{
 document.getElementById('paper-toggle').addEventListener('click',()=>{
   paperOnly=!paperOnly;
   document.getElementById('paper-toggle').classList.toggle('active',paperOnly);
+});
+
+document.getElementById('firstprint-toggle').addEventListener('click',()=>{
+  firstPrint=!firstPrint;
+  document.getElementById('firstprint-toggle').classList.toggle('active',firstPrint);
 });
 
 const ua=document.getElementById('upload-area'),fi=document.getElementById('file-input');
@@ -734,8 +744,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       // use /cards/search to find the oldest paper printing instead
       if (paperOnly && card && card.games && !card.games.includes('paper')) {
         await sleep(DELAY);
-        const searchUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
-        const sr = await fetch(searchUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+        const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
+        const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
         const sd = await sr.json();
         if (sr.ok && sd.data && sd.data.length > 0) {
           card = sd.data[0];
@@ -745,6 +755,25 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         }
       }
 
+      // First Print: search for the oldest printing of this card
+      // Combines with Paper Only if both are active
+      if (firstPrint && card) {
+        await sleep(DELAY);
+        const gameFilter = paperOnly ? '+game:paper' : '';
+        const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
+        const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+        const fd = await fr.json();
+        if (fr.ok && fd.data && fd.data.length > 0) {
+          const oldest = fd.data[0];
+          // Only swap if it's a different printing
+          if (oldest.id !== card.id) {
+            card = oldest;
+            usedFallback = true;
+          }
+        }
+        // If search fails, silently keep the card we already have
+      }
+
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
@@ -752,7 +781,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
       tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
-      const fallbackNote = usedFallback ? ` ⚠ fallback used` : '';
+      const fallbackNote = usedFallback ? ` ⚠ alt print used` : '';
       log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, usedFallback ? 'warn' : 'ok');
       ok++;
     }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
