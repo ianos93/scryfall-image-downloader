@@ -244,27 +244,33 @@
   .size-hint { margin-top: 10px; color: rgba(241,237,247,0.55); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
 
   /* CTA */
+  .btn-fetch-wrap {
+    position: relative;
+    z-index: 10;
+    isolation: isolate;
+    margin-top: 6px;
+  }
   .btn-fetch {
     width: 100%;
     padding: 18px;
-    background: #C6B6DD;
+    background: #C6B6DD !important;
     border: 1px solid rgba(241,237,247,0.3);
     border-radius: 12px;
-    color: #1a0d2e;
+    color: #1a0d2e !important;
     font-family: 'Jost', sans-serif;
     font-weight: 500;
     font-size: 15px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
     cursor: pointer;
-    transition: all 0.25s;
-    margin-top: 6px;
+    transition: background 0.25s, box-shadow 0.25s, transform 0.25s;
     box-shadow: 0 6px 28px rgba(198,182,221,0.25), 0 2px 8px rgba(0,0,0,0.4);
     display: flex; align-items: center; justify-content: center; gap: 12px;
-    position: relative; z-index: 2;
+    position: relative; z-index: 10;
+    isolation: isolate;
   }
   .btn-fetch:hover:not(:disabled) {
-    background: #d9ccec;
+    background: #d9ccec !important;
     box-shadow: 0 10px 40px rgba(198,182,221,0.4), 0 2px 8px rgba(0,0,0,0.3);
     transform: translateY(-2px);
   }
@@ -348,6 +354,8 @@
     width: 18px; height: 18px; border-radius: 50%;
     font-size: 9px; display: flex; align-items: center; justify-content: center;
     font-weight: 500;
+    font-family: 'Jost', sans-serif;
+    letter-spacing: 0;
   }
   .badge-ok { background: rgba(72,31,111,0.9); color: var(--lavender); border: 1px solid rgba(156,140,185,0.3); box-shadow: 0 0 8px var(--glow); }
   .badge-err { background: rgba(80,20,60,0.9); color: #d080c0; }
@@ -360,14 +368,15 @@
   }
   .stat-grp { display: flex; gap: 24px; }
   .stat { font-size: 12px; color: #F1EDF7; opacity: 0.8; }
-  .stat b { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 500; color: var(--orchid); opacity: 1; margin-right: 4px; }
-  .stat b.miss { color: rgba(180,100,160,0.8); }
+  .stat b { font-family: 'Jost', sans-serif; font-size: 22px; font-weight: 400; color: #F1EDF7; opacity: 1; margin-right: 4px; letter-spacing: 0.05em; }
+  .stat b.miss { color: rgba(198,182,221,0.6); }
 
   #log {
     display: none;
-    font-size: 11px; font-family: monospace; line-height: 1.9;
+    font-size: 11px; font-family: 'Jost', sans-serif; font-weight: 300; line-height: 1.9;
     color: rgba(198,182,221,0.5);
     max-height: 80px; overflow-y: auto; margin-bottom: 20px;
+    letter-spacing: 0.05em;
   }
   .lok { color: rgba(120,160,220,0.5); }
   .lerr { color: rgba(200,100,180,0.5); }
@@ -425,7 +434,9 @@
     <div class="size-hint" id="size-desc">488×680px · standard quality</div>
   </div>
 
-  <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
+  <div class="btn-fetch-wrap">
+    <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
+  </div>
 
   <div id="progress-section">
     <div class="float-card">
@@ -491,7 +502,7 @@ function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progres
 
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
 function tileOk(el,name,url){el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div><div class="badge badge-ok">✓</div>`;}
-function tileErr(el,name,msg){el.innerHTML=`<div class="card-err"><div style="font-size:16px;margin-bottom:6px;color:var(--orchid)">✗</div><div style="color:var(--amethyst)">${name}</div><div style="margin-top:4px;opacity:.7">${msg}</div></div><div class="badge badge-err">✗</div>`;}
+function tileErr(el,name,msg){el.innerHTML=`<div class="card-err"><div style="font-size:14px;margin-bottom:6px;color:var(--orchid);font-family:'Jost',sans-serif;font-weight:400">✕</div><div style="color:var(--orchid);font-family:'Jost',sans-serif;font-size:11px">${name}</div><div style="margin-top:4px;opacity:.7;font-family:'Jost',sans-serif;font-size:10px">${msg}</div></div><div class="badge badge-err">✕</div>`;}
 
 document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if(isFetching)return;
@@ -518,7 +529,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
-      tileOk(tile,card.name,imgUrl);log(`✓ ${card.name}`,'ok');ok++;
+      tileOk(tile,card.name,imgUrl);log(`✓  ${card.name}`,'ok');ok++;
     }catch(e){tileErr(tile,name,e.message);log(`✗ ${name}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
