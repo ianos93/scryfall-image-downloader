@@ -1020,42 +1020,38 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     sortCards(visualDeckData.main);
     sortCards(visualDeckData.sideboard);
     
-    // Rebuild individual cards grid in sorted order
+    // Rebuild individual cards grid in sorted order (one copy per unique card)
     const grid = document.getElementById('card-grid');
     grid.innerHTML = '';
     
-    // Add sorted main deck cards
+    // Add sorted main deck cards (only one instance per card)
     visualDeckData.main.forEach(card => {
-      for (let i = 0; i < card.quantity; i++) {
-        const tile = document.createElement('div');
-        tile.className = 'card-item';
-        tile.style.opacity = '1';
-        tile.style.transform = 'translateY(0)';
-        const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
-        tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
-        tile.style.cursor = 'pointer';
-        const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
-        tile.addEventListener('click', open);
-        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
-        grid.appendChild(tile);
-      }
+      const tile = document.createElement('div');
+      tile.className = 'card-item';
+      tile.style.opacity = '1';
+      tile.style.transform = 'translateY(0)';
+      const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
+      tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
+      tile.style.cursor = 'pointer';
+      const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+      tile.addEventListener('click', open);
+      tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      grid.appendChild(tile);
     });
     
-    // Add sorted sideboard cards
+    // Add sorted sideboard cards (only one instance per card)
     visualDeckData.sideboard.forEach(card => {
-      for (let i = 0; i < card.quantity; i++) {
-        const tile = document.createElement('div');
-        tile.className = 'card-item';
-        tile.style.opacity = '1';
-        tile.style.transform = 'translateY(0)';
-        const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
-        tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
-        tile.style.cursor = 'pointer';
-        const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
-        tile.addEventListener('click', open);
-        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
-        grid.appendChild(tile);
-      }
+      const tile = document.createElement('div');
+      tile.className = 'card-item';
+      tile.style.opacity = '1';
+      tile.style.transform = 'translateY(0)';
+      const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
+      tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
+      tile.style.cursor = 'pointer';
+      const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+      tile.addEventListener('click', open);
+      tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      grid.appendChild(tile);
     });
     
     await generateVisualPreview();
