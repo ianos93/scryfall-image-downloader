@@ -370,19 +370,40 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   }
   @keyframes riseIn { to { opacity: 1; transform: translateY(0); } }
-  .card-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s; }
-  .card-item:hover img { transform: scale(1.04); }
-  .card-item:hover { box-shadow: 0 8px 32px rgba(72,31,111,0.4); border-color: rgba(156,140,185,0.2); }
-  .card-overlay {
-    position: absolute; inset: 0;
-    background: linear-gradient(to top, rgba(20,8,35,0.9) 0%, transparent 50%);
-    opacity: 0; transition: opacity 0.2s;
-    display: flex; align-items: flex-end; padding: 10px;
+  .card-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.35s ease; }
+  .card-item:hover { 
+    box-shadow: 0 20px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(198,182,221,0.25);
+    transform: translateY(-6px) scale(1.02);
+    transition: transform 0.3s cubic-bezier(0.2,0,0,1), box-shadow 0.3s ease;
+    z-index: 2;
   }
-  .card-item:hover .card-overlay { opacity: 1; }
-  .card-overlay-inner { display: flex; flex-direction: column; gap: 2px; }
-  .card-name { font-size: 10px; letter-spacing: 0.06em; color: #F1EDF7; font-family: 'Jost', sans-serif; font-weight: 400; line-height: 1.3; }
-  .card-set { font-size: 9px; letter-spacing: 0.12em; color: var(--orchid); font-family: 'Jost', sans-serif; font-weight: 300; opacity: 0.85; text-transform: uppercase; }
+  .card-item:hover img { transform: scale(1.0); }
+  .card-overlay {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(22, 10, 40, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(198,182,221,0.2);
+    padding: 10px 12px 12px;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.2,0,0,1);
+    display: flex; align-items: flex-start;
+  }
+  .card-item:hover .card-overlay { transform: translateY(0); }
+  .card-overlay-inner { display: flex; flex-direction: column; gap: 3px; }
+  .card-name { font-size: 10px; letter-spacing: 0.05em; color: #F1EDF7; font-family: 'Jost', sans-serif; font-weight: 400; line-height: 1.3; }
+  .card-set { 
+    font-size: 9px; letter-spacing: 0.2em; 
+    color: #C6B6DD; 
+    font-family: 'Jost', sans-serif; font-weight: 500; 
+    text-transform: uppercase;
+    background: rgba(72,31,111,0.5);
+    border: 1px solid rgba(156,140,185,0.3);
+    border-radius: 3px;
+    padding: 1px 5px;
+    display: inline-block;
+    width: fit-content;
+  }
 
   .card-loading {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
