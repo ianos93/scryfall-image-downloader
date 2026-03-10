@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scryfall · Luminary</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --imperial:  #2A123F;
+    --amethyst:  #481F6F;
+    --lavender:  #9C8CB9;
+    --orchid:    #C6B6DD;
+    --pearl:     #F1EDF7;
+    --ink:       #0e0718;
+    --glow:      rgba(150,100,220,0.5);
+
+    /* dark overrides */
+    --bg:           #130a1e;
+    --surface:      rgba(42,18,63,0.55);
+    --border:       rgba(156,140,185,0.15);
+    --text:         var(--orchid);
+    --text-dim:     var(--lavender);
+    --text-head:    var(--pearl);
+    --dusted:       #9C8CB9;
+    --panel-bg:     rgba(120, 104, 158, 0.13);
+    --panel-border: rgba(156, 140, 185, 0.28);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Jost', sans-serif;
+    font-weight: 200;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Dark gradient atmosphere */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 0% 0%, rgba(72,31,111,0.45) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 60% at 100% 100%, rgba(42,18,63,0.6) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 30% at 55% 30%, rgba(72,31,111,0.2) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  /* Floating orb */
+  body::after {
+    content: '';
+    position: fixed;
+    width: 500px; height: 500px;
+    top: -150px; right: -150px;
+    background: radial-gradient(circle, rgba(72,31,111,0.4) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: orbFloat 9s ease-in-out infinite;
+    pointer-events: none; z-index: 0;
+  }
+  @keyframes orbFloat {
+    0%,100% { transform: translate(0,0) scale(1); }
+    50% { transform: translate(-20px,30px) scale(1.08); }
+  }
+
+  /* Frosted glass page overlay — sits behind content, only blurs the bg */
+  .page::before {
+    content: '';
+    position: fixed; inset: 0; z-index: -1;
+    backdrop-filter: blur(40px) saturate(1.5);
+    -webkit-backdrop-filter: blur(40px) saturate(1.5);
+    pointer-events: none;
+    mask-image: radial-gradient(ellipse 120% 120% at 50% 50%, black 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 120% 120% at 50% 50%, black 40%, transparent 100%);
+  }
+
+  .page { position: relative; z-index: 1; max-width: 920px; margin: 0 auto; padding: 0 32px 100px; }
+
+  /* ── Header ── */
+  header {
+    padding: 64px 0 52px;
+    text-align: center;
+    position: relative;
+    margin-bottom: 52px;
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 9px;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    color: var(--orchid);
+    opacity: 0.85;
+    margin-bottom: 20px;
+  }
+  .eyebrow::before, .eyebrow::after {
+    content: '';
+    width: 40px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(156,140,185,0.5));
+  }
+  .eyebrow::after { background: linear-gradient(90deg, rgba(156,140,185,0.5), transparent); }
+
+  h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 300;
+    font-size: clamp(42px, 7vw, 88px);
+    letter-spacing: -0.02em;
+    color: var(--pearl);
+    line-height: 1;
+    text-shadow: 0 0 80px rgba(150,100,220,0.35);
+  }
+  h1 em {
+    font-style: italic;
+    color: var(--lavender);
+    font-weight: 300;
+  }
+  .tagline {
+    margin-top: 14px;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--orchid);
+    opacity: 0.8;
+    letter-spacing: 0.05em;
+    font-weight: 300;
+  }
+
+  /* Decorative line */
+  .header-rule {
+    display: flex; align-items: center; gap: 16px;
+    max-width: 400px; margin: 28px auto 0;
+    color: var(--lavender); font-size: 14px; letter-spacing: 0.3em; opacity: 0.5;
+  }
+  .header-rule::before, .header-rule::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(156,140,185,0.4), transparent);
+  }
+
+  /* ── Cards (floating, no harsh borders) ── */
+  .float-card {
+    background: var(--panel-bg);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 16px;
+    box-shadow:
+      0 2px 32px rgba(0,0,0,0.25),
+      0 1px 0 rgba(198,182,221,0.08) inset,
+      0 0 0 1px var(--panel-border);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid var(--panel-border);
+    position: relative;
+    overflow: hidden;
+  }
+  .float-card::after {
+    content: '';
+    position: absolute; top: 0; left: 32px; right: 32px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(198,182,221,0.45), transparent);
+  }
+
+  .card-label {
+    font-size: 9px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--orchid);
+    opacity: 0.75;
+    margin-bottom: 14px;
+    font-weight: 400;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  textarea {
+    width: 100%;
+    min-height: 150px;
+    background: rgba(20,8,35,0.5);
+    border: 1px solid rgba(156,140,185,0.15);
+    border-radius: 10px;
+    color: var(--pearl);
+    font-family: 'Jost', sans-serif;
+    font-size: 14px;
+    font-weight: 200;
+    line-height: 1.75;
+    padding: 14px 16px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  textarea:focus {
+    border-color: rgba(156,140,185,0.35);
+    box-shadow: 0 0 0 3px rgba(150,100,220,0.1);
+  }
+  textarea::placeholder { color: rgba(198,182,221,0.35); font-style: italic; }
+
+  .upload-zone {
+    border: 1.5px dashed rgba(156,140,185,0.2);
+    border-radius: 10px;
+    min-height: 150px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: rgba(198,182,221,0.6); text-align: center; padding: 20px;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--lavender);
+    color: var(--lavender);
+    background: rgba(72,31,111,0.15);
+    box-shadow: inset 0 0 30px rgba(72,31,111,0.15), 0 0 0 4px rgba(72,31,111,0.08);
+  }
+  .upload-zone input { display: none; }
+  .upload-icon { font-size: 28px; filter: drop-shadow(0 0 10px var(--glow)); }
+  .upload-text { font-size: 13px; line-height: 1.6; }
+  #file-name { font-size: 11px; color: var(--lavender); display: none; font-weight: 400; letter-spacing: 0.08em; }
+
+  /* Toggles */
+  .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggle {
+    padding: 7px 18px;
+    background: rgba(20,8,35,0.5);
+    border: 1px solid rgba(156,140,185,0.15);
+    border-radius: 100px;
+    color: rgba(198,182,221,0.6);
+    font-family: 'Jost', sans-serif;
+    font-weight: 400;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .toggle:hover { border-color: var(--lavender); color: var(--lavender); }
+  .toggle.active {
+    background: var(--amethyst);
+    border-color: var(--lavender);
+    color: var(--pearl);
+    box-shadow: 0 0 20px rgba(150,100,220,0.35);
+  }
+  .size-hint { margin-top: 10px; color: rgba(198,182,221,0.65); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
+
+  /* CTA */
+  .btn-fetch {
+    width: 100%;
+    padding: 18px;
+    background: #C6B6DD;
+    border: 1px solid rgba(198,182,221,0.5);
+    border-radius: 12px;
+    color: var(--imperial);
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: 0.18em;
+    cursor: pointer;
+    transition: all 0.25s;
+    margin-top: 6px;
+    box-shadow: 0 6px 28px rgba(198,182,221,0.2), 0 2px 8px rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+  }
+  .btn-fetch:hover:not(:disabled) {
+    background: #d9ccec;
+    box-shadow: 0 10px 40px rgba(198,182,221,0.35), 0 2px 8px rgba(0,0,0,0.3);
+    transform: translateY(-2px);
+    border-color: rgba(241,237,247,0.6);
+  }
+  .btn-fetch:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  .btn-zip {
+    padding: 11px 28px;
+    background: transparent;
+    border: 1px solid rgba(156,140,185,0.25);
+    border-radius: 100px;
+    color: var(--lavender);
+    font-family: 'Jost', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 400;
+  }
+  .btn-zip:hover:not(:disabled) {
+    border-color: var(--orchid);
+    color: var(--orchid);
+    box-shadow: 0 0 20px rgba(150,100,220,0.2);
+  }
+  .btn-zip:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Progress */
+  #progress-section { display: none; margin-top: 28px; }
+  .prog-row { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.2em; color: var(--orchid); opacity: 0.75; margin-bottom: 8px; }
+  .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 28px; overflow: hidden; }
+  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
+
+  #card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+    gap: 12px;
+  }
+
+  .card-item {
+    aspect-ratio: 63/88;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(20,8,35,0.7);
+    border: 1px solid rgba(156,140,185,0.1);
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    animation: riseIn 0.5s cubic-bezier(0.2,0,0,1) forwards;
+    opacity: 0;
+    transform: translateY(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+  @keyframes riseIn { to { opacity: 1; transform: translateY(0); } }
+  .card-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s; }
+  .card-item:hover img { transform: scale(1.04); }
+  .card-item:hover { box-shadow: 0 8px 32px rgba(72,31,111,0.4); border-color: rgba(156,140,185,0.2); }
+  .card-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(20,8,35,0.9) 0%, transparent 50%);
+    opacity: 0; transition: opacity 0.2s;
+    display: flex; align-items: flex-end; padding: 10px;
+  }
+  .card-item:hover .card-overlay { opacity: 1; }
+  .card-name { font-size: 9px; letter-spacing: 0.08em; color: var(--orchid); font-family: 'Jost', sans-serif; font-weight: 400; }
+
+  .card-loading {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    color: rgba(198,182,221,0.5); font-size: 11px; padding: 16px; text-align: center;
+  }
+  .ring {
+    width: 24px; height: 24px;
+    border: 1.5px solid rgba(156,140,185,0.15);
+    border-top-color: var(--lavender);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .card-err { color: rgba(156,140,185,0.4); font-size: 11px; text-align: center; padding: 14px; line-height: 1.5; }
+
+  .badge {
+    position: absolute; top: 6px; right: 6px;
+    width: 18px; height: 18px; border-radius: 50%;
+    font-size: 9px; display: flex; align-items: center; justify-content: center;
+    font-weight: 500;
+  }
+  .badge-ok { background: rgba(72,31,111,0.9); color: var(--lavender); border: 1px solid rgba(156,140,185,0.3); box-shadow: 0 0 8px var(--glow); }
+  .badge-err { background: rgba(80,20,60,0.9); color: #d080c0; }
+
+  .stats-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+    margin-top: 20px; padding-top: 20px;
+    border-top: 1px solid rgba(156,140,185,0.1);
+  }
+  .stat-grp { display: flex; gap: 24px; }
+  .stat { font-size: 12px; color: var(--orchid); opacity: 0.8; }
+  .stat b { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 500; color: var(--orchid); opacity: 1; margin-right: 4px; }
+  .stat b.miss { color: rgba(180,100,160,0.8); }
+
+  #log {
+    display: none;
+    font-size: 11px; font-family: monospace; line-height: 1.9;
+    color: rgba(198,182,221,0.5);
+    max-height: 80px; overflow-y: auto; margin-bottom: 20px;
+  }
+  .lok { color: rgba(120,160,220,0.5); }
+  .lerr { color: rgba(200,100,180,0.5); }
+
+  /* ── Themed scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(20,8,35,0.4); border-radius: 100px; }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--amethyst), var(--lavender));
+    border-radius: 100px;
+    border: 1px solid rgba(156,140,185,0.15);
+  }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--lavender), var(--orchid)); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* Firefox */
+  * { scrollbar-width: thin; scrollbar-color: var(--amethyst) rgba(20,8,35,0.4); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Scryfall · Image Downloader</div>
+    <h1>The <em>Luminary</em><br>Collection</h1>
+    <p class="tagline">Gather card art from the infinite archive</p>
+    <div class="header-rule">✦</div>
+  </header>
+
+  <div class="grid-2">
+    <div class="float-card">
+      <div class="card-label">Card Names</div>
+      <textarea id="card-input" placeholder="Lightning Bolt&#10;Black Lotus&#10;Jace, the Mind Sculptor&#10;&#10;One per line…"></textarea>
+    </div>
+    <div class="float-card">
+      <div class="card-label">Upload List</div>
+      <div class="upload-zone" id="upload-area">
+        <input type="file" id="file-input" accept=".txt" />
+        <div class="upload-icon">✦</div>
+        <div class="upload-text">Drop a <strong>.txt</strong> file here<br>or click to browse</div>
+        <div id="file-name"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="float-card">
+    <div class="card-label">Image Resolution</div>
+    <div class="toggle-group" id="size-options">
+      <button class="toggle" data-size="small" data-desc="146×204px · small thumbnails">Small</button>
+      <button class="toggle active" data-size="normal" data-desc="488×680px · standard quality">Normal</button>
+      <button class="toggle" data-size="large" data-desc="672×936px · high quality JPEG">Large</button>
+      <button class="toggle" data-size="png" data-desc="745×1040px · lossless PNG">PNG</button>
+      <button class="toggle" data-size="art_crop" data-desc="Art only, no card frame">Art Crop</button>
+      <button class="toggle" data-size="border_crop" data-desc="Full card, border trimmed">Border Crop</button>
+    </div>
+    <div class="size-hint" id="size-desc">488×680px · standard quality</div>
+  </div>
+
+  <button class="btn-fetch" id="fetch-btn">✦ &nbsp; Summon Cards</button>
+
+  <div id="progress-section">
+    <div class="float-card">
+      <div class="prog-row">
+        <span style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
+        <span id="progress-count">0 / 0</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="progress-bar"></div></div>
+      <div id="log"></div>
+      <div id="card-grid"></div>
+      <div class="stats-row" id="stats-bar" style="display:none;">
+        <div class="stat-grp">
+          <div class="stat"><b id="stat-ok">0</b> found</div>
+          <div class="stat"><b class="miss" id="stat-err">0</b> failed</div>
+        </div>
+        <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
+let selectedSize='normal',fetchedImages=[],isFetching=false;
+
+document.getElementById('size-options').addEventListener('click',e=>{
+  const b=e.target.closest('.toggle');if(!b)return;
+  document.querySelectorAll('.toggle').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');selectedSize=b.dataset.size;
+  document.getElementById('size-desc').textContent=SIZE_DESCS[selectedSize]||'';
+});
+
+const ua=document.getElementById('upload-area'),fi=document.getElementById('file-input');
+ua.addEventListener('click',()=>fi.click());
+ua.addEventListener('dragover',e=>{e.preventDefault();ua.classList.add('drag-over');});
+ua.addEventListener('dragleave',()=>ua.classList.remove('drag-over'));
+ua.addEventListener('drop',e=>{e.preventDefault();ua.classList.remove('drag-over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
+fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
+function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
+
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function parseNames(raw){return raw.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));}
+function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null;if(card.card_faces?.[0]?.image_uris)return card.card_faces[0].image_uris[size]||null;return null;}
+function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
+function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
+
+function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
+function tileOk(el,name,url){el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div><div class="badge badge-ok">✓</div>`;}
+function tileErr(el,name,msg){el.innerHTML=`<div class="card-err"><div style="font-size:16px;margin-bottom:6px;color:var(--orchid)">✗</div><div style="color:var(--amethyst)">${name}</div><div style="margin-top:4px;opacity:.7">${msg}</div></div><div class="badge badge-err">✗</div>`;}
+
+document.getElementById('fetch-btn').addEventListener('click',async()=>{
+  if(isFetching)return;
+  const names=parseNames(document.getElementById('card-input').value);
+  if(!names.length){alert('Enter at least one card name.');return;}
+  isFetching=true;fetchedImages=[];
+  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.textContent='Searching…';
+  document.getElementById('progress-section').style.display='block';
+  document.getElementById('card-grid').innerHTML='';
+  document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
+  document.getElementById('stats-bar').style.display='none';
+  document.getElementById('dl-btn').disabled=true;
+  setProgress(0,names.length);
+  let ok=0,err=0;
+  for(let i=0;i<names.length;i++){
+    const name=names[i];const tile=makeTile(name);setProgress(i,names.length);
+    try{
+      const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const card=await res.json();
+      if(!res.ok)throw new Error(card.details||'Not found');
+      const imgUrl=getImg(card,selectedSize);
+      if(!imgUrl)throw new Error('No image for this size');
+      const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
+      const blob=await ir.blob();
+      const ext=selectedSize==='png'?'png':'jpg';
+      fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
+      tileOk(tile,card.name,imgUrl);log(`✓ ${card.name}`,'ok');ok++;
+    }catch(e){tileErr(tile,name,e.message);log(`✗ ${name}: ${e.message}`,'e');err++;}
+    await sleep(DELAY);
+  }
+  setProgress(names.length,names.length);
+  document.getElementById('stat-ok').textContent=ok;
+  document.getElementById('stat-err').textContent=err;
+  document.getElementById('stats-bar').style.display='flex';
+  document.getElementById('dl-btn').disabled=ok===0;
+  isFetching=false;fb.disabled=false;fb.innerHTML='✦ &nbsp; Summon Cards';
+});
+
+document.getElementById('dl-btn').addEventListener('click',async()=>{
+  if(!fetchedImages.length)return;
+  const b=document.getElementById('dl-btn');b.disabled=true;b.textContent='Packing…';
+  const zip=new JSZip();fetchedImages.forEach(({filename,blob})=>zip.file(filename,blob));
+  const content=await zip.generateAsync({type:'blob'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(content);
+  a.download=`scryfall-${selectedSize}.zip`;a.click();URL.revokeObjectURL(a.href);
+  b.disabled=false;b.textContent='↓ Download ZIP';
+});
+</script>
+</body>
+</html>
