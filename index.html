@@ -254,6 +254,42 @@
   }
   .size-hint { margin-top: 10px; color: rgba(241,237,247,0.55); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
 
+  .options-row {
+    display: flex; align-items: center; gap: 14px;
+    margin-top: 18px; padding-top: 16px;
+    border-top: 1px solid rgba(156,140,185,0.1);
+  }
+  .option-toggle {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(20,8,35,0.5);
+    border: 1px solid rgba(156,140,185,0.2);
+    border-radius: 100px;
+    padding: 6px 14px 6px 8px;
+    color: rgba(241,237,247,0.5);
+    font-family: 'Jost', sans-serif;
+    font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .option-toggle:hover { border-color: var(--lavender); color: var(--orchid); }
+  .option-toggle.active {
+    background: rgba(72,31,111,0.4);
+    border-color: var(--lavender);
+    color: #F1EDF7;
+    box-shadow: 0 0 16px rgba(150,100,220,0.2);
+  }
+  .option-pip {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: rgba(156,140,185,0.25);
+    border: 1px solid rgba(156,140,185,0.3);
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .option-toggle.active .option-pip {
+    background: #C6B6DD;
+    border-color: #F1EDF7;
+    box-shadow: 0 0 6px rgba(198,182,221,0.6);
+  }
+  .option-hint { font-size: 12px; font-style: italic; color: rgba(241,237,247,0.35); font-family: 'Cormorant Garamond', serif; }
+
   /* CTA */
   .btn-fetch-wrap {
     position: relative;
@@ -435,6 +471,13 @@
       <button class="toggle" data-size="border_crop" data-desc="Full card, border trimmed">Border Crop</button>
     </div>
     <div class="size-hint" id="size-desc">488×680px · standard quality</div>
+    <div class="options-row">
+      <button class="option-toggle" id="paper-toggle">
+        <span class="option-pip"></span>
+        Paper Only
+      </button>
+      <span class="option-hint">Exclude digital-only prints (MTGO, Arena)</span>
+    </div>
   </div>
 
   <div class="btn-fetch-wrap">
@@ -463,13 +506,18 @@
 
 <script>
 const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
-let selectedSize='normal',fetchedImages=[],isFetching=false;
+let selectedSize='normal',fetchedImages=[],isFetching=false,paperOnly=false;
 
 document.getElementById('size-options').addEventListener('click',e=>{
   const b=e.target.closest('.toggle');if(!b)return;
   document.querySelectorAll('.toggle').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');selectedSize=b.dataset.size;
   document.getElementById('size-desc').textContent=SIZE_DESCS[selectedSize]||'';
+});
+
+document.getElementById('paper-toggle').addEventListener('click',()=>{
+  paperOnly=!paperOnly;
+  document.getElementById('paper-toggle').classList.toggle('active',paperOnly);
 });
 
 const ua=document.getElementById('upload-area'),fi=document.getElementById('file-input');
@@ -562,17 +610,18 @@ function parseLine(raw) {
 
 function buildUrl(entry, fuzzy=false) {
   const method = fuzzy ? 'fuzzy' : 'exact';
-  // set + collector number → /cards/:code/:number
+  const paper = paperOnly ? '&q=game:paper' : '';
+  // set + collector number → /cards/:code/:number (paper flag not applicable here)
   if (entry.set && entry.number && !entry.name)
     return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  // name + set + number → /cards/:code/:number (most precise)
+  // name + set + number → /cards/:code/:number
   if (entry.set && entry.number && entry.name)
     return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
   // name + set → /cards/named?exact=name&set=set
   if (entry.set && entry.name)
-    return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}`;
-  // name only → /cards/named?exact=name (precise), fuzzy as fallback
-  return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
+    return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}${paper}`;
+  // name only
+  return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}${paper}`;
 }
 
 const DECK_HEADERS = /^(deck|sideboard|about|commander|companion|maybeboard|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
@@ -600,7 +649,11 @@ function tileOk(el,name,url,scryfallUrl,setCode){
   el.style.cursor='pointer';
   const set=setCode?`<div class="card-set">${setCode.toUpperCase()}</div>`:'';
   el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${name}</div>${set}</div></div>`;
-  if(scryfallUrl) el.addEventListener('click',()=>window.open(scryfallUrl,'_blank'));
+  if(scryfallUrl){
+    const open=()=>window.open(scryfallUrl,'_blank');
+    el.addEventListener('click', open);
+    el.addEventListener('auxclick', e=>{ if(e.button===1){ e.preventDefault(); open(); } });
+  }
 }
 function tileErr(el){el.remove();}
 
