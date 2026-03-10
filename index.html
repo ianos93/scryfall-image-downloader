@@ -993,35 +993,47 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
 
-// Generate visual preview (MTGGoldfish 5-column grid)
+// Generate visual preview (5-column grid with stacks of 4 cards, vertical offset)
 async function generateVisualPreview() {
-  const cardsPerRow = 5;
+  const COLS = 5;
+  const MAX_PER_STACK = 4;
   const cardWidth = 488;
   const cardHeight = 680;
+  const stackOffsetY = 15;  // Vertical offset between stacked cards
   const padding = 8;
   const sectionGap = 80;
   
-  // Expand cards based on quantity
-  const expandedMain = [];
-  visualDeckData.main.forEach(card => {
-    for (let i = 0; i < card.quantity; i++) {
-      expandedMain.push(card);
+  // Create stacks of up to 4 cards each
+  function createStacks(cardList) {
+    const stacks = [];
+    const allCards = [];
+    
+    // Expand cards by quantity
+    cardList.forEach(card => {
+      for (let i = 0; i < card.quantity; i++) {
+        allCards.push(card);
+      }
+    });
+    
+    // Group into stacks of 4
+    for (let i = 0; i < allCards.length; i += MAX_PER_STACK) {
+      stacks.push(allCards.slice(i, i + MAX_PER_STACK));
     }
-  });
+    
+    return stacks;
+  }
   
-  const expandedSideboard = [];
-  visualDeckData.sideboard.forEach(card => {
-    for (let i = 0; i < card.quantity; i++) {
-      expandedSideboard.push(card);
-    }
-  });
+  const mainStacks = createStacks(visualDeckData.main);
+  const sideStacks = createStacks(visualDeckData.sideboard);
   
-  const mainRows = Math.ceil(expandedMain.length / cardsPerRow);
-  const sideRows = Math.ceil(expandedSideboard.length / cardsPerRow);
+  const mainRows = Math.ceil(mainStacks.length / COLS);
+  const sideRows = Math.ceil(sideStacks.length / COLS);
   
-  const canvasWidth = (cardWidth * cardsPerRow) + (padding * (cardsPerRow + 1));
-  const mainHeight = mainRows > 0 ? (cardHeight * mainRows) + (padding * (mainRows + 1)) : 0;
-  const sideHeight = sideRows > 0 ? (cardHeight * sideRows) + (padding * (sideRows + 1)) : 0;
+  // Calculate canvas dimensions (add extra height for stacking offset)
+  const stackHeight = cardHeight + (stackOffsetY * (MAX_PER_STACK - 1));
+  const canvasWidth = (cardWidth * COLS) + (padding * (COLS + 1));
+  const mainHeight = mainRows > 0 ? (stackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
+  const sideHeight = sideRows > 0 ? (stackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = mainHeight + (sideRows > 0 ? sectionGap + sideHeight : 0);
   
   const canvas = document.getElementById('visual-preview-canvas');
@@ -1039,19 +1051,26 @@ async function generateVisualPreview() {
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   }
   
-  // Draw main deck
-  for (let i = 0; i < expandedMain.length; i++) {
-    const card = expandedMain[i];
-    const img = await loadImage(card.blob);
-    const col = i % cardsPerRow;
-    const row = Math.floor(i / cardsPerRow);
-    const x = padding + (col * (cardWidth + padding));
-    const y = padding + (row * (cardHeight + padding));
-    ctx.drawImage(img, x, y, cardWidth, cardHeight);
+  // Draw main deck stacks
+  for (let i = 0; i < mainStacks.length; i++) {
+    const stack = mainStacks[i];
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    const baseX = padding + (col * (cardWidth + padding));
+    const baseY = padding + (row * (stackHeight + padding));
+    
+    // Draw each card in the stack with vertical offset
+    for (let j = 0; j < stack.length; j++) {
+      const card = stack[j];
+      const img = await loadImage(card.blob);
+      const x = baseX;
+      const y = baseY + (j * stackOffsetY);
+      ctx.drawImage(img, x, y, cardWidth, cardHeight);
+    }
   }
   
   // Draw sideboard label
-  if (expandedSideboard.length > 0) {
+  if (sideStacks.length > 0) {
     const labelY = mainHeight + (sectionGap / 2) + 10;
     ctx.fillStyle = '#F1EDF7';
     ctx.font = '28px Jost';
@@ -1060,15 +1079,22 @@ async function generateVisualPreview() {
     ctx.fillText('SIDEBOARD', canvasWidth / 2, labelY);
   }
   
-  // Draw sideboard
-  for (let i = 0; i < expandedSideboard.length; i++) {
-    const card = expandedSideboard[i];
-    const img = await loadImage(card.blob);
-    const col = i % cardsPerRow;
-    const row = Math.floor(i / cardsPerRow);
-    const x = padding + (col * (cardWidth + padding));
-    const y = mainHeight + sectionGap + padding + (row * (cardHeight + padding));
-    ctx.drawImage(img, x, y, cardWidth, cardHeight);
+  // Draw sideboard stacks
+  for (let i = 0; i < sideStacks.length; i++) {
+    const stack = sideStacks[i];
+    const col = i % COLS;
+    const row = Math.floor(i / COLS);
+    const baseX = padding + (col * (cardWidth + padding));
+    const baseY = mainHeight + sectionGap + padding + (row * (stackHeight + padding));
+    
+    // Draw each card in the stack with vertical offset
+    for (let j = 0; j < stack.length; j++) {
+      const card = stack[j];
+      const img = await loadImage(card.blob);
+      const x = baseX;
+      const y = baseY + (j * stackOffsetY);
+      ctx.drawImage(img, x, y, cardWidth, cardHeight);
+    }
   }
 }
 
