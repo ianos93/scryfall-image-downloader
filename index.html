@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Scryfall · Luminary</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23130a1e'/%3E%3Cpolygon points='16,4 26,13 16,28 6,13' fill='%23481F6F' stroke='%239C8CB9' stroke-width='1'/%3E%3Cpolygon points='16,4 26,13 16,16 6,13' fill='%23C6B6DD' opacity='0.9'/%3E%3Cpolygon points='16,16 26,13 16,28' fill='%23481F6F' opacity='0.7'/%3E%3Cpolygon points='16,16 6,13 16,28' fill='%239C8CB9' opacity='0.5'/%3E%3C/svg%3E" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -343,7 +344,9 @@
     display: flex; align-items: flex-end; padding: 10px;
   }
   .card-item:hover .card-overlay { opacity: 1; }
-  .card-name { font-size: 9px; letter-spacing: 0.08em; color: var(--orchid); font-family: 'Jost', sans-serif; font-weight: 400; }
+  .card-overlay-inner { display: flex; flex-direction: column; gap: 2px; }
+  .card-name { font-size: 10px; letter-spacing: 0.06em; color: #F1EDF7; font-family: 'Jost', sans-serif; font-weight: 400; line-height: 1.3; }
+  .card-set { font-size: 9px; letter-spacing: 0.12em; color: var(--orchid); font-family: 'Jost', sans-serif; font-weight: 300; opacity: 0.85; text-transform: uppercase; }
 
   .card-loading {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -502,9 +505,10 @@ function log(msg,t){const el=document.getElementById('log');el.style.display='bl
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
 
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
-function tileOk(el,name,url,scryfallUrl){
+function tileOk(el,name,url,scryfallUrl,setCode){
   el.style.cursor='pointer';
-  el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-name">${name}</div></div>`;
+  const set=setCode?`<div class="card-set">${setCode.toUpperCase()}</div>`:'';
+  el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${name}</div>${set}</div></div>`;
   if(scryfallUrl) el.addEventListener('click',()=>window.open(scryfallUrl,'_blank'));
 }
 function tileErr(el){el.remove();}
@@ -540,7 +544,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}.${ext}`});
-      tileOk(tile,card.name,imgUrl,card.scryfall_uri);log(`✓  ${card.name}`,'ok');ok++;
+      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);log(`✓  ${card.name}`,'ok');ok++;
     }catch(e){tileErr(tile);log(`✕  ${name}: ${e.message}`,'e');err++;}
     await sleep(DELAY);
   }
