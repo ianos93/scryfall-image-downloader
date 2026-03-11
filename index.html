@@ -147,7 +147,7 @@
   .float-card {
     background: var(--panel-bg);
     border-radius: 16px;
-    padding: 28px 32px 20px 32px; /* Reduced bottom padding from 28px to 20px */
+    padding: 28px 32px 12px 32px; /* Reduced bottom padding to 12px */
     margin-bottom: 16px;
     box-shadow:
       0 2px 32px rgba(0,0,0,0.25),
@@ -992,22 +992,31 @@ document.getElementById('import-url-btn').addEventListener('click', async () => 
 async function importDeckFromUrl(url) {
   const urlLower = url.toLowerCase();
   
-  // Moxfield - has public API
+  // Moxfield - use public endpoint to avoid CORS
   if (urlLower.includes('moxfield.com')) {
     const deckId = url.match(/decks\/([a-zA-Z0-9_-]+)/)?.[1];
     if (!deckId) throw new Error('Invalid Moxfield URL');
     
-    const apiUrl = `https://api2.moxfield.com/v2/decks/all/${deckId}`;
-    const res = await fetch(apiUrl);
+    // Use the public deck page and parse the JSON from the page
+    const publicUrl = `https://www.moxfield.com/decks/${deckId}`;
+    const res = await fetch(publicUrl);
     if (!res.ok) throw new Error('Failed to fetch from Moxfield');
-    const data = await res.json();
+    const html = await res.text();
+    
+    // Extract the deck data from the script tag
+    const match = html.match(/window\.__PRELOADED_STATE__\s*=\s*({.+?});/);
+    if (!match) throw new Error('Could not parse Moxfield deck data');
+    
+    const data = JSON.parse(match[1]);
+    const deckData = data.decks?.decks?.[deckId];
+    if (!deckData) throw new Error('Deck data not found');
     
     let decklist = '';
     
     // Main deck
-    if (data.boards?.mainboard) {
+    if (deckData.boards?.mainboard) {
       decklist += 'Deck\n';
-      for (const [cardName, cardData] of Object.entries(data.boards.mainboard)) {
+      for (const [cardName, cardData] of Object.entries(deckData.boards.mainboard)) {
         const qty = cardData.quantity || 1;
         const set = cardData.card?.set?.toUpperCase() || '';
         decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
@@ -1015,9 +1024,9 @@ async function importDeckFromUrl(url) {
     }
     
     // Sideboard
-    if (data.boards?.sideboard && Object.keys(data.boards.sideboard).length > 0) {
+    if (deckData.boards?.sideboard && Object.keys(deckData.boards.sideboard).length > 0) {
       decklist += '\nSideboard\n';
-      for (const [cardName, cardData] of Object.entries(data.boards.sideboard)) {
+      for (const [cardName, cardData] of Object.entries(deckData.boards.sideboard)) {
         const qty = cardData.quantity || 1;
         const set = cardData.card?.set?.toUpperCase() || '';
         decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
@@ -1025,9 +1034,9 @@ async function importDeckFromUrl(url) {
     }
     
     // Commander
-    if (data.boards?.commanders && Object.keys(data.boards.commanders).length > 0) {
+    if (deckData.boards?.commanders && Object.keys(deckData.boards.commanders).length > 0) {
       decklist += '\nCommander\n';
-      for (const [cardName, cardData] of Object.entries(data.boards.commanders)) {
+      for (const [cardName, cardData] of Object.entries(deckData.boards.commanders)) {
         const qty = cardData.quantity || 1;
         const set = cardData.card?.set?.toUpperCase() || '';
         decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
@@ -1488,18 +1497,23 @@ async function fetchCard(entry) {
     }
   }
 
-  // First Print
+  // First Print - OPTIMIZED: Only search if needed
   if (firstPrint && card) {
-    await sleep(DELAY);
-    const gameFilter = paperOnly ? '+game:paper' : '';
-    const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
-    const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-    const fd = await fr.json();
-    if (fr.ok && fd.data && fd.data.length > 0) {
-      const oldest = fd.data[0];
-      if (oldest.id !== card.id) {
-        card = oldest;
-        usedFallback = true;
+    // Check if we need to search (skip if card is likely already first print)
+    const needsFirstPrintCheck = !entry.set || entry.set !== card.set;
+    
+    if (needsFirstPrintCheck) {
+      await sleep(DELAY);
+      const gameFilter = paperOnly ? '+game:paper' : '';
+      const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
+      const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const fd = await fr.json();
+      if (fr.ok && fd.data && fd.data.length > 0) {
+        const oldest = fd.data[0];
+        if (oldest.id !== card.id) {
+          card = oldest;
+          usedFallback = true;
+        }
       }
     }
   }
