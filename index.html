@@ -688,6 +688,9 @@
         First Print
       </button>
       <span class="option-hint">Fetch the oldest printing of each card</span>
+      <button class="option-toggle" id="clear-cache-btn" style="margin-left:auto;" title="Clear cached card data">
+        🗑️ Clear Cache
+      </button>
     </div>
   </div>
 
@@ -740,6 +743,61 @@
 const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
 let selectedSize='png',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
 let visualDeckData = { main: [], sideboard: [] }; // Store fetched cards with sections and quantities
+
+// Cache settings
+const CACHE_VERSION = 'v1';
+const CACHE_EXPIRY_DAYS = 7;
+const CACHE_KEY_PREFIX = 'scryfall_cache_';
+
+// Card cache utilities
+function getCachedCard(name, set) {
+  try {
+    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) return null;
+    
+    const data = JSON.parse(cached);
+    const age = Date.now() - data.timestamp;
+    const maxAge = CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    
+    if (age > maxAge || data.version !== CACHE_VERSION) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    
+    return data.card;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedCard(name, set, cardData) {
+  try {
+    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}`;
+    const data = {
+      card: cardData,
+      timestamp: Date.now(),
+      version: CACHE_VERSION
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+  } catch (e) {
+    // Quota exceeded - clear old cache entries
+    clearOldCache();
+  }
+}
+
+function clearOldCache() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+  } catch {}
+}
 
 document.getElementById('size-options').addEventListener('click',e=>{
   const b=e.target.closest('.toggle');if(!b)return;
@@ -1045,8 +1103,73 @@ function sortCards(cardList) {
   });
 }
 
-// Fetch a single card with 3-tier fallback strategy
+// Batch fetch cards using Scryfall's collection endpoint for better performance
+async function batchFetchCards(entries) {
+  // Group entries that can be batched (have exact name+set)
+  const batchable = [];
+  const nonBatchable = [];
+  
+  entries.forEach(entry => {
+    if (entry.name && entry.set && !entry.number) {
+      batchable.push(entry);
+    } else {
+      nonBatchable.push(entry);
+    }
+  });
+  
+  const results = new Map();
+  
+  // Batch fetch in groups of 75 (Scryfall's limit)
+  if (batchable.length > 0) {
+    for (let i = 0; i < batchable.length; i += 75) {
+      const batch = batchable.slice(i, i + 75);
+      const identifiers = batch.map(e => ({ name: e.name, set: e.set }));
+      
+      try {
+        const res = await fetch('https://api.scryfall.com/cards/collection', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'ScryfallImageDownloader/2.0'
+          },
+          body: JSON.stringify({ identifiers })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok && data.data) {
+          data.data.forEach((card, idx) => {
+            if (card) {
+              const entry = batch[idx];
+              const key = `${entry.name}_${entry.set}`;
+              results.set(key, card);
+              // Cache the result
+              setCachedCard(entry.name, entry.set, card);
+            }
+          });
+        }
+        
+        // Respect rate limits
+        await sleep(DELAY);
+      } catch (e) {
+        // Fall back to individual fetching for this batch
+        nonBatchable.push(...batch);
+      }
+    }
+  }
+  
+  return { results, nonBatchable };
+}
+
 async function fetchCard(entry) {
+  // Check cache first
+  const cachedCard = getCachedCard(entry.name, entry.set);
+  if (cachedCard) {
+    cachedCard._usedFallback = false;
+    cachedCard._fromCache = true;
+    return cachedCard;
+  }
+  
   let card = null;
   let usedFallback = false;
 
@@ -1110,7 +1233,11 @@ async function fetchCard(entry) {
     }
   }
 
+  // Cache the card for future use
+  setCachedCard(entry.name, entry.set || card.set, card);
+
   card._usedFallback = usedFallback;
+  card._fromCache = false;
   return card;
 }
 
@@ -1163,6 +1290,14 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   let ok=0,err=0;
   let currentIndex = 0;
   
+  // Try batch fetching first for better performance
+  const { results: batchResults, nonBatchable: unbatchedEntries } = await batchFetchCards(allEntries);
+  const batchHits = batchResults.size;
+  
+  if (batchHits > 0) {
+    log(`⚡ Batch fetched ${batchHits} cards`, 'ok');
+  }
+  
   // Process main deck
   for(let i=0;i<sections.main.length;i++){
     const entry=sections.main[i];
@@ -1170,7 +1305,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgress(currentIndex,allEntries.length);
     
     try{
-      const card = await fetchCard(entry);
+      // Check batch results first
+      const batchKey = `${entry.name}_${entry.set}`;
+      let card = batchResults.get(batchKey);
+      let fromCache = false;
+      
+      if (!card) {
+        card = await fetchCard(entry);
+        fromCache = card._fromCache;
+      }
+      
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
@@ -1192,11 +1336,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, card._usedFallback ? 'warn' : 'ok');
+      const cacheNote = fromCache ? ' 💾' : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
       ok++;
     }catch(e){log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     currentIndex++;
-    await sleep(DELAY);
+    
+    // Skip delay for cached results
+    if (!fromCache && !batchResults.has(batchKey)) {
+      await sleep(DELAY);
+    }
   }
   
   // Process sideboard
@@ -1206,7 +1355,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgress(currentIndex,allEntries.length);
     
     try{
-      const card = await fetchCard(entry);
+      // Check batch results first
+      const batchKey = `${entry.name}_${entry.set}`;
+      let card = batchResults.get(batchKey);
+      let fromCache = false;
+      
+      if (!card) {
+        card = await fetchCard(entry);
+        fromCache = card._fromCache;
+      }
+      
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
       const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
@@ -1228,11 +1386,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, card._usedFallback ? 'warn' : 'ok');
+      const cacheNote = fromCache ? ' 💾' : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
       ok++;
-    }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
+    }catch(e){log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     currentIndex++;
-    await sleep(DELAY);
+    
+    // Skip delay for cached results
+    if (!fromCache && !batchResults.has(batchKey)) {
+      await sleep(DELAY);
+    }
   }
   
   setProgress(allEntries.length,allEntries.length);
@@ -1371,9 +1534,18 @@ async function generateVisualPreview() {
   const canvasHeight = Math.max(mainHeight, sideHeight);
   
   const canvas = document.getElementById('visual-preview-canvas');
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
-  const ctx = canvas.getContext('2d');
+  
+  // Use OffscreenCanvas for better performance if supported
+  let offscreenCanvas, ctx;
+  if (typeof OffscreenCanvas !== 'undefined' && canvasWidth * canvasHeight < 268435456) {
+    // Only use OffscreenCanvas for reasonable sizes (< 256MB)
+    offscreenCanvas = new OffscreenCanvas(canvasWidth, canvasHeight);
+    ctx = offscreenCanvas.getContext('2d', { alpha: true });
+  } else {
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    ctx = canvas.getContext('2d', { alpha: true });
+  }
   
   // Background
   const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
@@ -1430,6 +1602,15 @@ async function generateVisualPreview() {
       const y = baseY + (j * sideboardStackOffsetY); // Use sideboard offset
       ctx.drawImage(img, x, y, cardWidth, cardHeight);
     }
+  }
+  
+  // Transfer OffscreenCanvas to main canvas if used
+  if (offscreenCanvas) {
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    const mainCtx = canvas.getContext('2d', { alpha: true });
+    const bitmap = await offscreenCanvas.transferToImageBitmap();
+    mainCtx.drawImage(bitmap, 0, 0);
   }
 }
 
@@ -1533,6 +1714,12 @@ infoModal.addEventListener('click', (e) => {
   if (e.target.id === 'info-modal') {
     infoModal.classList.remove('active');
   }
+});
+
+// Clear Cache button
+document.getElementById('clear-cache-btn').addEventListener('click', () => {
+  const count = clearOldCache();
+  alert('Cache cleared! All cached card data has been removed.');
 });
 
 // Fade info button on scroll, show on hover
