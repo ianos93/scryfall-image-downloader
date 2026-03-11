@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io https:; connect-src 'self' https:; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -180,7 +180,7 @@
 
   textarea {
     width: 100%;
-    min-height: 150px;
+    height: 222px; /* Match Import Decklist container height */
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.15);
     border-radius: 10px;
@@ -193,6 +193,7 @@
     resize: vertical;
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
   }
   textarea:focus {
     border-color: rgba(156,140,185,0.35);
@@ -658,6 +659,24 @@
     color: var(--orchid) !important;
   }
   
+  /* Tab content animations */
+  .tab-content-hidden {
+    opacity: 0;
+    transform: translateX(-10px);
+    pointer-events: none;
+  }
+  
+  .tab-content-visible {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: all;
+  }
+  
+  #import-upload, #import-url {
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+                transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
   /* URL input focus */
   #deck-url-input:focus {
     border-color: rgba(156,140,185,0.35) !important;
@@ -695,7 +714,7 @@
       <!-- Container with fixed height -->
       <div style="min-height: 222px; position: relative;">
         <!-- Upload tab -->
-        <div id="import-upload" style="display: block; position: absolute; width: 100%; top: 0; left: 0;">
+        <div id="import-upload" class="tab-content-visible" style="display: block; position: absolute; width: 100%; top: 0; left: 0;">
           <div class="upload-zone" id="upload-area">
             <input type="file" id="file-input" accept=".txt" />
             <div class="upload-icon">✦</div>
@@ -705,7 +724,7 @@
         </div>
         
         <!-- URL import tab -->
-        <div id="import-url" style="display: none; position: absolute; width: 100%; top: 0; left: 0;">
+        <div id="import-url" class="tab-content-hidden" style="display: none; position: absolute; width: 100%; top: 0; left: 0;">
           <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGTop8, Archidekt)…" style="width: 100%; padding: 14px 16px; background: rgba(20,8,35,0.7); border: 1px solid rgba(156,140,185,0.15); border-radius: 10px; color: var(--pearl); font-size: 14px; margin-bottom: 12px; font-family: 'Jost', sans-serif; font-weight: 200; outline: none; transition: border-color 0.2s, box-shadow 0.2s; box-sizing: border-box;">
           <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em; font-family: 'Jost', sans-serif; font-weight: 400;">
             IMPORT DECK
@@ -890,15 +909,45 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 
 // Import tab switchers
 document.getElementById('tab-upload-btn').addEventListener('click', () => {
-  document.getElementById('import-upload').style.display = 'block';
-  document.getElementById('import-url').style.display = 'none';
+  const uploadTab = document.getElementById('import-upload');
+  const urlTab = document.getElementById('import-url');
+  
+  // Hide URL tab with animation
+  urlTab.classList.remove('tab-content-visible');
+  urlTab.classList.add('tab-content-hidden');
+  
+  // Show upload tab with animation after a brief delay
+  setTimeout(() => {
+    urlTab.style.display = 'none';
+    uploadTab.style.display = 'block';
+    setTimeout(() => {
+      uploadTab.classList.remove('tab-content-hidden');
+      uploadTab.classList.add('tab-content-visible');
+    }, 10);
+  }, 150);
+  
   document.getElementById('tab-upload-btn').classList.add('active');
   document.getElementById('tab-url-btn').classList.remove('active');
 });
 
 document.getElementById('tab-url-btn').addEventListener('click', () => {
-  document.getElementById('import-upload').style.display = 'none';
-  document.getElementById('import-url').style.display = 'block';
+  const uploadTab = document.getElementById('import-upload');
+  const urlTab = document.getElementById('import-url');
+  
+  // Hide upload tab with animation
+  uploadTab.classList.remove('tab-content-visible');
+  uploadTab.classList.add('tab-content-hidden');
+  
+  // Show URL tab with animation after a brief delay
+  setTimeout(() => {
+    uploadTab.style.display = 'none';
+    urlTab.style.display = 'block';
+    setTimeout(() => {
+      urlTab.classList.remove('tab-content-hidden');
+      urlTab.classList.add('tab-content-visible');
+    }, 10);
+  }, 150);
+  
   document.getElementById('tab-upload-btn').classList.remove('active');
   document.getElementById('tab-url-btn').classList.add('active');
 });
@@ -1549,7 +1598,12 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
-      const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
+      
+      console.log('[MAIN] Fetching image:', imgUrl);
+      const ir=await fetch(imgUrl);
+      console.log('[MAIN] Image response:', ir.status, ir.statusText, ir.url);
+      
+      if(!ir.ok)throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       
@@ -1599,7 +1653,12 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       const imgUrl=getImg(card,selectedSize);
       if(!imgUrl)throw new Error('No image for this size');
-      const ir=await fetch(imgUrl);if(!ir.ok)throw new Error('Image fetch failed');
+      
+      console.log('[SIDE] Fetching image:', imgUrl);
+      const ir=await fetch(imgUrl);
+      console.log('[SIDE] Image response:', ir.status, ir.statusText, ir.url);
+      
+      if(!ir.ok)throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
       const blob=await ir.blob();
       const ext=selectedSize==='png'?'png':'jpg';
       
