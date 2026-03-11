@@ -147,7 +147,7 @@
   .float-card {
     background: var(--panel-bg);
     border-radius: 16px;
-    padding: 28px 32px;
+    padding: 28px 32px 20px 32px; /* Reduced bottom padding from 28px to 20px */
     margin-bottom: 16px;
     box-shadow:
       0 2px 32px rgba(0,0,0,0.25),
@@ -1722,7 +1722,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
       
       const img = document.createElement('img');
-      img.src = card.imgUrl;
+      // Use blob URL instead of imgUrl for display
+      img.src = URL.createObjectURL(card.blob);
       img.alt = card.name;
       img.loading = 'lazy';
       
