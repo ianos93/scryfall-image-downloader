@@ -1102,7 +1102,8 @@ async function generateVisualPreview() {
   const SIDEBOARD_MAX_PER_STACK = 15; // Sideboard stacks hold more cards
   const cardWidth = 488;
   const cardHeight = 680;
-  const stackOffsetY = 100;
+  const stackOffsetY = 100; // Main deck vertical offset
+  const sideboardStackOffsetY = 160; // Sideboard vertical offset (increased)
   const padding = 24; // Doubled from 12
   const sidebarGap = 80; // Increased gap between main and sideboard
   
@@ -1132,7 +1133,7 @@ async function generateVisualPreview() {
   
   // Calculate dimensions
   const mainStackHeight = cardHeight + (stackOffsetY * (MAX_PER_STACK - 1));
-  const sideStackHeight = cardHeight + (stackOffsetY * (SIDEBOARD_MAX_PER_STACK - 1));
+  const sideStackHeight = cardHeight + (sideboardStackOffsetY * (SIDEBOARD_MAX_PER_STACK - 1));
   
   const mainWidth = (cardWidth * MAIN_COLS) + (padding * (MAIN_COLS + 1));
   const sideWidth = cardWidth + (padding * 2);
@@ -1179,7 +1180,7 @@ async function generateVisualPreview() {
     const labelX = mainWidth + (sidebarGap / 2);
     const labelY = canvasHeight / 2;
     ctx.fillStyle = '#F1EDF7';
-    ctx.font = '24px Jost';
+    ctx.font = '36px Jost'; // Increased from 24px
     ctx.letterSpacing = '0.2em';
     ctx.textAlign = 'center';
     ctx.save();
@@ -1199,7 +1200,7 @@ async function generateVisualPreview() {
       const card = stack[j];
       const img = await loadImage(card.blob);
       const x = baseX;
-      const y = baseY + (j * stackOffsetY);
+      const y = baseY + (j * sideboardStackOffsetY); // Use sideboard offset
       ctx.drawImage(img, x, y, cardWidth, cardHeight);
     }
   }
