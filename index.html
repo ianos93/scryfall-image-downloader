@@ -668,15 +668,15 @@
       <textarea id="card-input" placeholder="Lightning Bolt&#10;Black Lotus&#10;Jace, the Mind Sculptor&#10;&#10;One per line…"></textarea>
     </div>
     <div class="float-card">
-      <div class="card-label">Import Options</div>
+      <div class="card-label">Import Decklist</div>
       
       <!-- Tab switcher -->
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <button class="import-tab active" id="tab-upload-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.3); border: 1px solid rgba(156,140,185,0.3); border-radius: 6px; color: var(--pearl); font-size: 11px; cursor: pointer; transition: all 0.2s;">
-          📄 Upload File
+        <button class="import-tab active" id="tab-upload-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.3); border: 1px solid rgba(156,140,185,0.3); border-radius: 6px; color: var(--pearl); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em;">
+          UPLOAD FILE
         </button>
-        <button class="import-tab" id="tab-url-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.15); border: 1px solid rgba(156,140,185,0.2); border-radius: 6px; color: rgba(241,237,247,0.6); font-size: 11px; cursor: pointer; transition: all 0.2s;">
-          🔗 Import URL
+        <button class="import-tab" id="tab-url-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.15); border: 1px solid rgba(156,140,185,0.2); border-radius: 6px; color: rgba(241,237,247,0.6); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em;">
+          IMPORT URL
         </button>
       </div>
       
@@ -692,11 +692,11 @@
       
       <!-- URL import tab -->
       <div id="import-url" style="display: none;">
-        <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGDecks, MTGTop8)" style="width: 100%; padding: 12px; background: rgba(20,8,35,0.6); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--pearl); font-size: 13px; margin-bottom: 12px;">
-        <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em;">
+        <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGTop8, Archidekt)" style="width: 100%; padding: 12px; background: rgba(20,8,35,0.6); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--pearl); font-size: 13px; margin-bottom: 12px; font-family: 'Jost', sans-serif;">
+        <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em; font-family: 'Jost', sans-serif;">
           IMPORT DECK
         </button>
-        <div id="url-import-status" style="margin-top: 8px; font-size: 11px; color: rgba(241,237,247,0.5); text-align: center;"></div>
+        <div id="url-import-status" style="margin-top: 8px; font-size: 11px; color: rgba(241,237,247,0.5); text-align: center; font-family: 'Jost', sans-serif;"></div>
       </div>
     </div>
   </div>
@@ -723,9 +723,6 @@
         First Print
       </button>
       <span class="option-hint">Fetch the oldest printing of each card</span>
-      <button class="option-toggle" id="clear-cache-btn" style="margin-left:auto;" title="Clear cached card data">
-        🗑️ Clear Cache
-      </button>
     </div>
   </div>
 
@@ -921,6 +918,7 @@ document.getElementById('import-url-btn').addEventListener('click', async () => 
       throw new Error('No decklist found');
     }
   } catch (e) {
+    console.error('URL import error:', e);
     statusEl.textContent = `✗ Import failed: ${e.message}`;
     statusEl.style.color = 'rgba(255,100,100,0.8)';
   }
@@ -1464,6 +1462,9 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   const sections = parseNamesWithSections(ta.value);
   const allEntries = [...sections.main, ...sections.sideboard];
   
+  console.log('Fetch started with', allEntries.length, 'entries');
+  console.log('Sections:', sections);
+  
   if(allEntries.length === 0){
     ta.classList.add('input-error');
     ta.focus();
@@ -1508,11 +1509,18 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   let currentIndex = 0;
   
   // Try batch fetching first for better performance
-  const { results: batchResults, nonBatchable: unbatchedEntries } = await batchFetchCards(allEntries);
-  const batchHits = batchResults.size;
-  
-  if (batchHits > 0) {
-    log(`⚡ Batch fetched ${batchHits} cards`, 'ok');
+  let batchResults = new Map();
+  try {
+    const batchData = await batchFetchCards(allEntries);
+    batchResults = batchData.results;
+    const batchHits = batchResults.size;
+    
+    if (batchHits > 0) {
+      log(`⚡ Batch fetched ${batchHits} cards`, 'ok');
+    }
+  } catch (e) {
+    console.error('Batch fetch failed:', e);
+    log(`⚠ Batch fetch failed, using individual fetching`, 'warn');
   }
   
   // Process main deck
@@ -1941,12 +1949,6 @@ infoModal.addEventListener('click', (e) => {
   if (e.target.id === 'info-modal') {
     infoModal.classList.remove('active');
   }
-});
-
-// Clear Cache button
-document.getElementById('clear-cache-btn').addEventListener('click', () => {
-  const count = clearOldCache();
-  alert('Cache cleared! All cached card data has been removed.');
 });
 
 // Fade info button on scroll, show on hover
