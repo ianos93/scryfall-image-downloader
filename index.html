@@ -938,7 +938,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('tab-visual').style.display='none';
   document.getElementById('btn-individual').classList.add('active');
   document.getElementById('btn-visual').classList.remove('active');
-  document.getElementById('card-grid').innerHTML='';
+  
+  const grid = document.getElementById('card-grid');
+  grid.innerHTML='';
+  grid.style.display='none'; // Hide grid during fetch
+  
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
@@ -951,7 +955,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   for(let i=0;i<sections.main.length;i++){
     const entry=sections.main[i];
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
-    const tile=makeTile(displayName);
     setProgress(currentIndex,allEntries.length);
     
     try{
@@ -963,7 +966,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ext=selectedSize==='png'?'png':'jpg';
       
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
-      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
       
       // Store for visual deck with quantity
       visualDeckData.main.push({
@@ -973,13 +975,14 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         quantity: entry.quantity,
         imgUrl: imgUrl,
         type_line: card.type_line || '',
-        cmc: card.cmc || 0
+        cmc: card.cmc || 0,
+        scryfall_uri: card.scryfall_uri
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
       log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}`, card._usedFallback ? 'warn' : 'ok');
       ok++;
-    }catch(e){tileErr(tile);log(`✕  ${displayName}: ${e.message}`,'e');err++;}
+    }catch(e){log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     currentIndex++;
     await sleep(DELAY);
   }
@@ -988,7 +991,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   for(let i=0;i<sections.sideboard.length;i++){
     const entry=sections.sideboard[i];
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
-    const tile=makeTile(displayName);
     setProgress(currentIndex,allEntries.length);
     
     try{
@@ -1000,7 +1002,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const ext=selectedSize==='png'?'png':'jpg';
       
       fetchedImages.push({name:card.name,blob,filename:`${sanitize(card.name)}_${card.set}.${ext}`});
-      tileOk(tile,card.name,imgUrl,card.scryfall_uri,card.set);
       
       // Store for visual deck with quantity
       visualDeckData.sideboard.push({
@@ -1010,7 +1011,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         quantity: entry.quantity,
         imgUrl: imgUrl,
         type_line: card.type_line || '',
-        cmc: card.cmc || 0
+        cmc: card.cmc || 0,
+        scryfall_uri: card.scryfall_uri
       });
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
@@ -1031,37 +1033,49 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     sortCards(visualDeckData.sideboard);
     
     // Rebuild individual cards grid in sorted order (one copy per unique card)
-    const grid = document.getElementById('card-grid');
     grid.innerHTML = '';
+    grid.style.display = 'grid'; // Show grid now
+    
+    let animationDelay = 0;
     
     // Add sorted main deck cards (only one instance per card)
     visualDeckData.main.forEach(card => {
       const tile = document.createElement('div');
       tile.className = 'card-item';
-      tile.style.opacity = '1';
-      tile.style.transform = 'translateY(0)';
+      tile.style.opacity = '0';
+      tile.style.transform = 'translateY(20px)';
+      tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
+      
       const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
       tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
       tile.style.cursor = 'pointer';
-      const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+      
+      const open = () => window.open(card.scryfall_uri, '_blank');
       tile.addEventListener('click', open);
       tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      
       grid.appendChild(tile);
+      animationDelay += 0.03; // 30ms delay between each card
     });
     
     // Add sorted sideboard cards (only one instance per card)
     visualDeckData.sideboard.forEach(card => {
       const tile = document.createElement('div');
       tile.className = 'card-item';
-      tile.style.opacity = '1';
-      tile.style.transform = 'translateY(0)';
+      tile.style.opacity = '0';
+      tile.style.transform = 'translateY(20px)';
+      tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
+      
       const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
       tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
       tile.style.cursor = 'pointer';
-      const open = () => window.open(`https://scryfall.com/card/${card.set}/${card.name.toLowerCase().replace(/ /g, '-')}`, '_blank');
+      
+      const open = () => window.open(card.scryfall_uri, '_blank');
       tile.addEventListener('click', open);
       tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      
       grid.appendChild(tile);
+      animationDelay += 0.03;
     });
     
     await generateVisualPreview();
@@ -1081,29 +1095,27 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
   b.disabled=false;b.textContent='↓ Download ZIP';
 });
 
-// Generate visual preview (5-column grid with stacks of 4 cards, vertical offset)
+// Generate visual preview (5-column main grid + 1-column sideboard on right)
 async function generateVisualPreview() {
-  const COLS = 5;
+  const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
   const cardWidth = 488;
   const cardHeight = 680;
-  const stackOffsetY = 100;  // Vertical offset between stacked cards
+  const stackOffsetY = 100;
   const padding = 12;
-  const sectionGap = 80;
+  const sidebarGap = 40; // Gap between main deck and sideboard column
   
   // Create stacks of up to 4 cards each
   function createStacks(cardList) {
     const stacks = [];
     const allCards = [];
     
-    // Expand cards by quantity
     cardList.forEach(card => {
       for (let i = 0; i < card.quantity; i++) {
         allCards.push(card);
       }
     });
     
-    // Group into stacks of 4
     for (let i = 0; i < allCards.length; i += MAX_PER_STACK) {
       stacks.push(allCards.slice(i, i + MAX_PER_STACK));
     }
@@ -1114,15 +1126,20 @@ async function generateVisualPreview() {
   const mainStacks = createStacks(visualDeckData.main);
   const sideStacks = createStacks(visualDeckData.sideboard);
   
-  const mainRows = Math.ceil(mainStacks.length / COLS);
-  const sideRows = Math.ceil(sideStacks.length / COLS);
+  const mainRows = Math.ceil(mainStacks.length / MAIN_COLS);
   
-  // Calculate canvas dimensions (add extra height for stacking offset)
+  // Sideboard is single column, so rows = number of stacks
+  const sideRows = sideStacks.length;
+  
+  // Calculate dimensions
   const stackHeight = cardHeight + (stackOffsetY * (MAX_PER_STACK - 1));
-  const canvasWidth = (cardWidth * COLS) + (padding * (COLS + 1));
+  const mainWidth = (cardWidth * MAIN_COLS) + (padding * (MAIN_COLS + 1));
+  const sideWidth = cardWidth + (padding * 2);
+  
+  const canvasWidth = mainWidth + (sideStacks.length > 0 ? sidebarGap + sideWidth : 0);
   const mainHeight = mainRows > 0 ? (stackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
   const sideHeight = sideRows > 0 ? (stackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
-  const canvasHeight = mainHeight + (sideRows > 0 ? sectionGap + sideHeight : 0);
+  const canvasHeight = Math.max(mainHeight, sideHeight);
   
   const canvas = document.getElementById('visual-preview-canvas');
   canvas.width = canvasWidth;
@@ -1139,15 +1156,14 @@ async function generateVisualPreview() {
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
   }
   
-  // Draw main deck stacks
+  // Draw main deck stacks (5 columns)
   for (let i = 0; i < mainStacks.length; i++) {
     const stack = mainStacks[i];
-    const col = i % COLS;
-    const row = Math.floor(i / COLS);
+    const col = i % MAIN_COLS;
+    const row = Math.floor(i / MAIN_COLS);
     const baseX = padding + (col * (cardWidth + padding));
     const baseY = padding + (row * (stackHeight + padding));
     
-    // Draw each card in the stack with vertical offset
     for (let j = 0; j < stack.length; j++) {
       const card = stack[j];
       const img = await loadImage(card.blob);
@@ -1157,25 +1173,27 @@ async function generateVisualPreview() {
     }
   }
   
-  // Draw sideboard label
+  // Draw "SIDEBOARD" label if exists
   if (sideStacks.length > 0) {
-    const labelY = mainHeight + (sectionGap / 2) + 10;
+    const labelX = mainWidth + sidebarGap + (sideWidth / 2);
+    const labelY = 30;
     ctx.fillStyle = '#F1EDF7';
-    ctx.font = '28px Jost';
+    ctx.font = '20px Jost';
     ctx.letterSpacing = '0.2em';
     ctx.textAlign = 'center';
-    ctx.fillText('SIDEBOARD', canvasWidth / 2, labelY);
+    ctx.save();
+    ctx.translate(labelX, labelY);
+    ctx.rotate(-Math.PI / 2); // Rotate 90 degrees counter-clockwise
+    ctx.fillText('SIDEBOARD', 0, 0);
+    ctx.restore();
   }
   
-  // Draw sideboard stacks
+  // Draw sideboard stacks (single column on right)
   for (let i = 0; i < sideStacks.length; i++) {
     const stack = sideStacks[i];
-    const col = i % COLS;
-    const row = Math.floor(i / COLS);
-    const baseX = padding + (col * (cardWidth + padding));
-    const baseY = mainHeight + sectionGap + padding + (row * (stackHeight + padding));
+    const baseX = mainWidth + sidebarGap + padding;
+    const baseY = padding + (i * (stackHeight + padding));
     
-    // Draw each card in the stack with vertical offset
     for (let j = 0; j < stack.length; j++) {
       const card = stack[j];
       const img = await loadImage(card.blob);
