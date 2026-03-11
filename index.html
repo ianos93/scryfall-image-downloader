@@ -1593,7 +1593,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       if (!card) {
         card = await fetchCard(entry);
-        fromCache = card._fromCache;
+        fromCache = card._fromCache || false;
+      } else {
+        // Card from batch results
+        fromCache = false;
       }
       
       const imgUrl=getImg(card,selectedSize);
@@ -1648,7 +1651,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       if (!card) {
         card = await fetchCard(entry);
-        fromCache = card._fromCache;
+        fromCache = card._fromCache || false;
+      } else {
+        // Card from batch results
+        fromCache = false;
       }
       
       const imgUrl=getImg(card,selectedSize);
