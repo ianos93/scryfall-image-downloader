@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.scryfall.com https://scryfall.com https://api2.moxfield.com https://www.mtggoldfish.com https://www.mtgtop8.com https://archidekt.com; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src https: 'self'; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -644,12 +644,18 @@
   .import-tab:hover {
     background: rgba(72,31,111,0.4) !important;
     border-color: rgba(156,140,185,0.4) !important;
-    color: var(--pearl) !important;
+    color: var(--orchid) !important;
   }
   .import-tab.active {
     background: rgba(72,31,111,0.4) !important;
     border-color: rgba(156,140,185,0.4) !important;
-    color: var(--pearl) !important;
+    color: var(--orchid) !important;
+  }
+  
+  /* URL input focus */
+  #deck-url-input:focus {
+    border-color: rgba(156,140,185,0.35) !important;
+    box-shadow: 0 0 0 3px rgba(150,100,220,0.1) !important;
   }
 </style>
 </head>
@@ -672,31 +678,34 @@
       
       <!-- Tab switcher -->
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <button class="import-tab active" id="tab-upload-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.3); border: 1px solid rgba(156,140,185,0.3); border-radius: 6px; color: var(--pearl); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em;">
+        <button class="import-tab active" id="tab-upload-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.3); border: 1px solid rgba(156,140,185,0.3); border-radius: 6px; color: var(--orchid); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em; font-weight: 400;">
           UPLOAD FILE
         </button>
-        <button class="import-tab" id="tab-url-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.15); border: 1px solid rgba(156,140,185,0.2); border-radius: 6px; color: rgba(241,237,247,0.6); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em;">
+        <button class="import-tab" id="tab-url-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.15); border: 1px solid rgba(156,140,185,0.2); border-radius: 6px; color: rgba(198,182,221,0.5); font-size: 11px; cursor: pointer; transition: all 0.2s; font-family: 'Jost', sans-serif; letter-spacing: 0.1em; font-weight: 400;">
           IMPORT URL
         </button>
       </div>
       
-      <!-- Upload tab -->
-      <div id="import-upload" style="display: block;">
-        <div class="upload-zone" id="upload-area">
-          <input type="file" id="file-input" accept=".txt" />
-          <div class="upload-icon">✦</div>
-          <div class="upload-text">Drop a <strong>.txt</strong> file here<br>or click to browse</div>
-          <div id="file-name"></div>
+      <!-- Container with fixed height -->
+      <div style="min-height: 222px; position: relative;">
+        <!-- Upload tab -->
+        <div id="import-upload" style="display: block; position: absolute; width: 100%; top: 0; left: 0;">
+          <div class="upload-zone" id="upload-area">
+            <input type="file" id="file-input" accept=".txt" />
+            <div class="upload-icon">✦</div>
+            <div class="upload-text">Drop a <strong>.txt</strong> file here<br>or click to browse</div>
+            <div id="file-name"></div>
+          </div>
         </div>
-      </div>
-      
-      <!-- URL import tab -->
-      <div id="import-url" style="display: none;">
-        <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGTop8, Archidekt)" style="width: 100%; padding: 12px; background: rgba(20,8,35,0.6); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--pearl); font-size: 13px; margin-bottom: 12px; font-family: 'Jost', sans-serif;">
-        <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em; font-family: 'Jost', sans-serif;">
-          IMPORT DECK
-        </button>
-        <div id="url-import-status" style="margin-top: 8px; font-size: 11px; color: rgba(241,237,247,0.5); text-align: center; font-family: 'Jost', sans-serif;"></div>
+        
+        <!-- URL import tab -->
+        <div id="import-url" style="display: none; position: absolute; width: 100%; top: 0; left: 0;">
+          <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGTop8, Archidekt)" style="width: 100%; padding: 14px 16px; background: rgba(20,8,35,0.7); border: 1px solid rgba(156,140,185,0.15); border-radius: 10px; color: var(--pearl); font-size: 14px; margin-bottom: 12px; font-family: 'Jost', sans-serif; font-weight: 200; outline: none; transition: border-color 0.2s, box-shadow 0.2s;">
+          <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em; font-family: 'Jost', sans-serif; font-weight: 400;">
+            IMPORT DECK
+          </button>
+          <div id="url-import-status" style="margin-top: 8px; font-size: 11px; color: rgba(241,237,247,0.5); text-align: center; font-family: 'Jost', sans-serif;"></div>
+        </div>
       </div>
     </div>
   </div>
