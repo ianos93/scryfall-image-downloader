@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.scryfall.com https://scryfall.com; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -943,12 +944,56 @@ function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progres
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
 function tileOk(el,name,url,scryfallUrl,setCode){
   el.style.cursor='pointer';
-  const set=setCode?`<div class="card-set">${setCode.toUpperCase()}</div>`:'';
-  el.innerHTML=`<img src="${url}" alt="${name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${name}</div>${set}</div></div>`;
-  if(scryfallUrl){
-    const open=()=>window.open(scryfallUrl,'_blank');
+  const setDiv = setCode ? `<div class="card-set">${sanitizeHTML(setCode.toUpperCase())}</div>` : '';
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = name;
+  img.loading = 'lazy';
+  
+  const overlay = document.createElement('div');
+  overlay.className = 'card-overlay';
+  
+  const overlayInner = document.createElement('div');
+  overlayInner.className = 'card-overlay-inner';
+  
+  const cardName = document.createElement('div');
+  cardName.className = 'card-name';
+  cardName.textContent = name; // Use textContent to prevent XSS
+  
+  overlayInner.appendChild(cardName);
+  if (setCode) {
+    const setEl = document.createElement('div');
+    setEl.className = 'card-set';
+    setEl.textContent = setCode.toUpperCase();
+    overlayInner.appendChild(setEl);
+  }
+  
+  overlay.appendChild(overlayInner);
+  el.innerHTML = '';
+  el.appendChild(img);
+  el.appendChild(overlay);
+  
+  if(scryfallUrl && isValidScryfallUrl(scryfallUrl)){
+    const open=()=>window.open(scryfallUrl,'_blank','noopener,noreferrer');
     el.addEventListener('click', open);
     el.addEventListener('auxclick', e=>{ if(e.button===1){ e.preventDefault(); open(); } });
+  }
+}
+
+// Sanitize HTML to prevent XSS
+function sanitizeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Validate Scryfall URLs
+function isValidScryfallUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.hostname === 'scryfall.com' || urlObj.hostname.endsWith('.scryfall.com');
+  } catch {
+    return false;
   }
 }
 function tileErr(el){el.remove();}
@@ -1082,6 +1127,19 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     return;
   }
   
+  // Rate limiting protection - warn for large lists
+  if(allEntries.length > 100) {
+    if(!confirm(`You're about to fetch ${allEntries.length} cards. This may take several minutes and could trigger rate limiting. Continue?`)) {
+      return;
+    }
+  }
+  
+  // Hard limit to prevent abuse
+  if(allEntries.length > 500) {
+    alert('Maximum 500 cards allowed. Please reduce your list size.');
+    return;
+  }
+  
   isFetching=true;
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
@@ -1209,13 +1267,39 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       tile.style.transform = 'translateY(20px)';
       tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
       
-      const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
-      tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
+      const img = document.createElement('img');
+      img.src = card.imgUrl;
+      img.alt = card.name;
+      img.loading = 'lazy';
+      
+      const overlay = document.createElement('div');
+      overlay.className = 'card-overlay';
+      
+      const overlayInner = document.createElement('div');
+      overlayInner.className = 'card-overlay-inner';
+      
+      const cardName = document.createElement('div');
+      cardName.className = 'card-name';
+      cardName.textContent = card.name; // Use textContent for XSS protection
+      overlayInner.appendChild(cardName);
+      
+      if (card.set) {
+        const setEl = document.createElement('div');
+        setEl.className = 'card-set';
+        setEl.textContent = card.set.toUpperCase();
+        overlayInner.appendChild(setEl);
+      }
+      
+      overlay.appendChild(overlayInner);
+      tile.appendChild(img);
+      tile.appendChild(overlay);
       tile.style.cursor = 'pointer';
       
-      const open = () => window.open(card.scryfall_uri, '_blank');
-      tile.addEventListener('click', open);
-      tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      if (card.scryfall_uri && isValidScryfallUrl(card.scryfall_uri)) {
+        const open = () => window.open(card.scryfall_uri, '_blank', 'noopener,noreferrer');
+        tile.addEventListener('click', open);
+        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+      }
       
       grid.appendChild(tile);
       animationDelay += 0.03; // 30ms delay between each card
@@ -1352,9 +1436,16 @@ async function generateVisualPreview() {
 function loadImage(blob) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url); // Clean up blob URL to prevent memory leak
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load image'));
+    };
+    img.src = url;
   });
 }
 
