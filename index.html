@@ -1099,14 +1099,15 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
 async function generateVisualPreview() {
   const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
+  const SIDEBOARD_MAX_PER_STACK = 15; // Sideboard stacks hold more cards
   const cardWidth = 488;
   const cardHeight = 680;
   const stackOffsetY = 100;
-  const padding = 12;
-  const sidebarGap = 40; // Gap between main deck and sideboard column
+  const padding = 24; // Doubled from 12
+  const sidebarGap = 80; // Increased gap between main and sideboard
   
-  // Create stacks of up to 4 cards each
-  function createStacks(cardList) {
+  // Create stacks of up to MAX cards each
+  function createStacks(cardList, maxPerStack) {
     const stacks = [];
     const allCards = [];
     
@@ -1116,29 +1117,29 @@ async function generateVisualPreview() {
       }
     });
     
-    for (let i = 0; i < allCards.length; i += MAX_PER_STACK) {
-      stacks.push(allCards.slice(i, i + MAX_PER_STACK));
+    for (let i = 0; i < allCards.length; i += maxPerStack) {
+      stacks.push(allCards.slice(i, i + maxPerStack));
     }
     
     return stacks;
   }
   
-  const mainStacks = createStacks(visualDeckData.main);
-  const sideStacks = createStacks(visualDeckData.sideboard);
+  const mainStacks = createStacks(visualDeckData.main, MAX_PER_STACK);
+  const sideStacks = createStacks(visualDeckData.sideboard, SIDEBOARD_MAX_PER_STACK);
   
   const mainRows = Math.ceil(mainStacks.length / MAIN_COLS);
-  
-  // Sideboard is single column, so rows = number of stacks
   const sideRows = sideStacks.length;
   
   // Calculate dimensions
-  const stackHeight = cardHeight + (stackOffsetY * (MAX_PER_STACK - 1));
+  const mainStackHeight = cardHeight + (stackOffsetY * (MAX_PER_STACK - 1));
+  const sideStackHeight = cardHeight + (stackOffsetY * (SIDEBOARD_MAX_PER_STACK - 1));
+  
   const mainWidth = (cardWidth * MAIN_COLS) + (padding * (MAIN_COLS + 1));
   const sideWidth = cardWidth + (padding * 2);
   
   const canvasWidth = mainWidth + (sideStacks.length > 0 ? sidebarGap + sideWidth : 0);
-  const mainHeight = mainRows > 0 ? (stackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
-  const sideHeight = sideRows > 0 ? (stackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
+  const mainHeight = mainRows > 0 ? (mainStackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
+  const sideHeight = sideRows > 0 ? (sideStackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = Math.max(mainHeight, sideHeight);
   
   const canvas = document.getElementById('visual-preview-canvas');
@@ -1162,7 +1163,7 @@ async function generateVisualPreview() {
     const col = i % MAIN_COLS;
     const row = Math.floor(i / MAIN_COLS);
     const baseX = padding + (col * (cardWidth + padding));
-    const baseY = padding + (row * (stackHeight + padding));
+    const baseY = padding + (row * (mainStackHeight + padding));
     
     for (let j = 0; j < stack.length; j++) {
       const card = stack[j];
@@ -1173,12 +1174,12 @@ async function generateVisualPreview() {
     }
   }
   
-  // Draw "SIDEBOARD" label if exists
+  // Draw "SIDEBOARD" label if exists (centered vertically on left side of sideboard column)
   if (sideStacks.length > 0) {
-    const labelX = mainWidth + sidebarGap + (sideWidth / 2);
-    const labelY = 30;
+    const labelX = mainWidth + (sidebarGap / 2);
+    const labelY = canvasHeight / 2;
     ctx.fillStyle = '#F1EDF7';
-    ctx.font = '20px Jost';
+    ctx.font = '24px Jost';
     ctx.letterSpacing = '0.2em';
     ctx.textAlign = 'center';
     ctx.save();
@@ -1192,7 +1193,7 @@ async function generateVisualPreview() {
   for (let i = 0; i < sideStacks.length; i++) {
     const stack = sideStacks[i];
     const baseX = mainWidth + sidebarGap + padding;
-    const baseY = padding + (i * (stackHeight + padding));
+    const baseY = padding + (i * (sideStackHeight + padding));
     
     for (let j = 0; j < stack.length; j++) {
       const card = stack[j];
