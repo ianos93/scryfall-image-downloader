@@ -1186,14 +1186,23 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     sortCards(visualDeckData.main);
     sortCards(visualDeckData.sideboard);
     
-    // Rebuild individual cards grid in sorted order (one copy per unique card)
+    // Rebuild individual cards grid in sorted order (one copy per unique card across both sections)
     grid.innerHTML = '';
     grid.style.display = 'grid'; // Show grid now
     
     let animationDelay = 0;
+    const seenCards = new Set(); // Track unique cards across both sections
     
-    // Add sorted main deck cards (only one instance per card)
-    visualDeckData.main.forEach(card => {
+    // Combine main and sideboard, deduplicate by name+set
+    const allCards = [...visualDeckData.main, ...visualDeckData.sideboard];
+    
+    allCards.forEach(card => {
+      const cardKey = `${card.name}|${card.set}`;
+      
+      // Skip if we've already added this card
+      if (seenCards.has(cardKey)) return;
+      seenCards.add(cardKey);
+      
       const tile = document.createElement('div');
       tile.className = 'card-item';
       tile.style.opacity = '0';
@@ -1210,26 +1219,6 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       grid.appendChild(tile);
       animationDelay += 0.03; // 30ms delay between each card
-    });
-    
-    // Add sorted sideboard cards (only one instance per card)
-    visualDeckData.sideboard.forEach(card => {
-      const tile = document.createElement('div');
-      tile.className = 'card-item';
-      tile.style.opacity = '0';
-      tile.style.transform = 'translateY(20px)';
-      tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
-      
-      const set = card.set ? `<div class="card-set">${card.set.toUpperCase()}</div>` : '';
-      tile.innerHTML = `<img src="${card.imgUrl}" alt="${card.name}" loading="lazy"/><div class="card-overlay"><div class="card-overlay-inner"><div class="card-name">${card.name}</div>${set}</div></div>`;
-      tile.style.cursor = 'pointer';
-      
-      const open = () => window.open(card.scryfall_uri, '_blank');
-      tile.addEventListener('click', open);
-      tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
-      
-      grid.appendChild(tile);
-      animationDelay += 0.03;
     });
     
     await generateVisualPreview();
@@ -1257,9 +1246,9 @@ async function generateVisualPreview() {
   const cardWidth = 488;
   const cardHeight = 680;
   const stackOffsetY = 100; // Main deck vertical offset
-  const sideboardStackOffsetY = 160; // Sideboard vertical offset (increased)
+  const sideboardStackOffsetY = 165; // Sideboard vertical offset (increased)
   const padding = 24; // Doubled from 12
-  const sidebarGap = 80; // Increased gap between main and sideboard
+  const sidebarGap = 100; // Increased gap between main and sideboard
   
   // Create stacks of up to MAX cards each
   function createStacks(cardList, maxPerStack) {
