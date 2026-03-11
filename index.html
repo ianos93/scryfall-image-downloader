@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.scryfall.com https://scryfall.com; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://api.scryfall.com https://scryfall.com https://api2.moxfield.com https://www.mtggoldfish.com https://www.mtgtop8.com https://archidekt.com; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -639,6 +639,18 @@
     margin-right: 10px;
     font-size: 10px;
   }
+  
+  /* Import tabs */
+  .import-tab:hover {
+    background: rgba(72,31,111,0.4) !important;
+    border-color: rgba(156,140,185,0.4) !important;
+    color: var(--pearl) !important;
+  }
+  .import-tab.active {
+    background: rgba(72,31,111,0.4) !important;
+    border-color: rgba(156,140,185,0.4) !important;
+    color: var(--pearl) !important;
+  }
 </style>
 </head>
 <body>
@@ -656,12 +668,35 @@
       <textarea id="card-input" placeholder="Lightning Bolt&#10;Black Lotus&#10;Jace, the Mind Sculptor&#10;&#10;One per line…"></textarea>
     </div>
     <div class="float-card">
-      <div class="card-label">Upload List</div>
-      <div class="upload-zone" id="upload-area">
-        <input type="file" id="file-input" accept=".txt" />
-        <div class="upload-icon">✦</div>
-        <div class="upload-text">Drop a <strong>.txt</strong> file here<br>or click to browse</div>
-        <div id="file-name"></div>
+      <div class="card-label">Import Options</div>
+      
+      <!-- Tab switcher -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <button class="import-tab active" id="tab-upload-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.3); border: 1px solid rgba(156,140,185,0.3); border-radius: 6px; color: var(--pearl); font-size: 11px; cursor: pointer; transition: all 0.2s;">
+          📄 Upload File
+        </button>
+        <button class="import-tab" id="tab-url-btn" style="flex: 1; padding: 8px; background: rgba(72,31,111,0.15); border: 1px solid rgba(156,140,185,0.2); border-radius: 6px; color: rgba(241,237,247,0.6); font-size: 11px; cursor: pointer; transition: all 0.2s;">
+          🔗 Import URL
+        </button>
+      </div>
+      
+      <!-- Upload tab -->
+      <div id="import-upload" style="display: block;">
+        <div class="upload-zone" id="upload-area">
+          <input type="file" id="file-input" accept=".txt" />
+          <div class="upload-icon">✦</div>
+          <div class="upload-text">Drop a <strong>.txt</strong> file here<br>or click to browse</div>
+          <div id="file-name"></div>
+        </div>
+      </div>
+      
+      <!-- URL import tab -->
+      <div id="import-url" style="display: none;">
+        <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGDecks, MTGTop8)" style="width: 100%; padding: 12px; background: rgba(20,8,35,0.6); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--pearl); font-size: 13px; margin-bottom: 12px;">
+        <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em;">
+          IMPORT DECK
+        </button>
+        <div id="url-import-status" style="margin-top: 8px; font-size: 11px; color: rgba(241,237,247,0.5); text-align: center;"></div>
       </div>
     </div>
   </div>
@@ -840,6 +875,188 @@ ua.addEventListener('dragleave',()=>ua.classList.remove('drag-over'));
 ua.addEventListener('drop',e=>{e.preventDefault();ua.classList.remove('drag-over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
 fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
+
+// Import tab switchers
+document.getElementById('tab-upload-btn').addEventListener('click', () => {
+  document.getElementById('import-upload').style.display = 'block';
+  document.getElementById('import-url').style.display = 'none';
+  document.getElementById('tab-upload-btn').classList.add('active');
+  document.getElementById('tab-url-btn').classList.remove('active');
+});
+
+document.getElementById('tab-url-btn').addEventListener('click', () => {
+  document.getElementById('import-upload').style.display = 'none';
+  document.getElementById('import-url').style.display = 'block';
+  document.getElementById('tab-upload-btn').classList.remove('active');
+  document.getElementById('tab-url-btn').classList.add('active');
+});
+
+// URL Import functionality
+document.getElementById('import-url-btn').addEventListener('click', async () => {
+  const urlInput = document.getElementById('deck-url-input');
+  const statusEl = document.getElementById('url-import-status');
+  const url = urlInput.value.trim();
+  
+  if (!url) {
+    statusEl.textContent = '⚠️ Please enter a deck URL';
+    statusEl.style.color = 'rgba(255,200,100,0.8)';
+    return;
+  }
+  
+  statusEl.textContent = '⏳ Importing deck...';
+  statusEl.style.color = 'rgba(241,237,247,0.5)';
+  
+  try {
+    const decklist = await importDeckFromUrl(url);
+    if (decklist) {
+      document.getElementById('card-input').value = decklist;
+      statusEl.textContent = '✓ Deck imported successfully!';
+      statusEl.style.color = 'rgba(156,255,156,0.8)';
+      
+      // Switch back to upload tab to show the imported list
+      setTimeout(() => {
+        document.getElementById('tab-upload-btn').click();
+      }, 1000);
+    } else {
+      throw new Error('No decklist found');
+    }
+  } catch (e) {
+    statusEl.textContent = `✗ Import failed: ${e.message}`;
+    statusEl.style.color = 'rgba(255,100,100,0.8)';
+  }
+});
+
+// Import deck from various sites
+async function importDeckFromUrl(url) {
+  const urlLower = url.toLowerCase();
+  
+  // Moxfield - has public API
+  if (urlLower.includes('moxfield.com')) {
+    const deckId = url.match(/decks\/([a-zA-Z0-9_-]+)/)?.[1];
+    if (!deckId) throw new Error('Invalid Moxfield URL');
+    
+    const apiUrl = `https://api2.moxfield.com/v2/decks/all/${deckId}`;
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error('Failed to fetch from Moxfield');
+    const data = await res.json();
+    
+    let decklist = '';
+    
+    // Main deck
+    if (data.boards?.mainboard) {
+      decklist += 'Deck\n';
+      for (const [cardName, cardData] of Object.entries(data.boards.mainboard)) {
+        const qty = cardData.quantity || 1;
+        const set = cardData.card?.set?.toUpperCase() || '';
+        decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
+      }
+    }
+    
+    // Sideboard
+    if (data.boards?.sideboard && Object.keys(data.boards.sideboard).length > 0) {
+      decklist += '\nSideboard\n';
+      for (const [cardName, cardData] of Object.entries(data.boards.sideboard)) {
+        const qty = cardData.quantity || 1;
+        const set = cardData.card?.set?.toUpperCase() || '';
+        decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
+      }
+    }
+    
+    // Commander
+    if (data.boards?.commanders && Object.keys(data.boards.commanders).length > 0) {
+      decklist += '\nCommander\n';
+      for (const [cardName, cardData] of Object.entries(data.boards.commanders)) {
+        const qty = cardData.quantity || 1;
+        const set = cardData.card?.set?.toUpperCase() || '';
+        decklist += `${qty} ${cardName}${set ? ' (' + set + ')' : ''}\n`;
+      }
+    }
+    
+    return decklist;
+  }
+  
+  // MTGGoldfish - has export endpoint
+  if (urlLower.includes('mtggoldfish.com')) {
+    const deckId = url.match(/deck\/(\d+)/)?.[1];
+    if (!deckId) throw new Error('Invalid MTGGoldfish URL');
+    
+    const exportUrl = `https://www.mtggoldfish.com/deck/download/${deckId}`;
+    const res = await fetch(exportUrl);
+    if (!res.ok) throw new Error('Failed to fetch from MTGGoldfish');
+    const text = await res.text();
+    
+    return text;
+  }
+  
+  // MTGDecks.net - scrape the page
+  if (urlLower.includes('mtgdecks.net')) {
+    throw new Error('MTGDecks.net requires manual export. Please copy the decklist and paste it directly.');
+  }
+  
+  // MTGTop8 - has export functionality
+  if (urlLower.includes('mtgtop8.com')) {
+    const eventId = url.match(/e=(\d+)/)?.[1];
+    const deckId = url.match(/d=(\d+)/)?.[1];
+    if (!eventId || !deckId) throw new Error('Invalid MTGTop8 URL');
+    
+    const exportUrl = `https://www.mtgtop8.com/export?d=${deckId}&f=Standard`;
+    const res = await fetch(exportUrl);
+    if (!res.ok) throw new Error('Failed to fetch from MTGTop8');
+    const text = await res.text();
+    
+    return text;
+  }
+  
+  // Archidekt - has public API
+  if (urlLower.includes('archidekt.com')) {
+    const deckId = url.match(/decks\/(\d+)/)?.[1];
+    if (!deckId) throw new Error('Invalid Archidekt URL');
+    
+    const apiUrl = `https://archidekt.com/api/decks/${deckId}/small/`;
+    const res = await fetch(apiUrl);
+    if (!res.ok) throw new Error('Failed to fetch from Archidekt');
+    const data = await res.json();
+    
+    let decklist = 'Deck\n';
+    
+    if (data.cards) {
+      // Group by category
+      const categories = {};
+      data.cards.forEach(card => {
+        const cat = card.categories?.[0] || 'Maindeck';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(card);
+      });
+      
+      // Main deck
+      if (categories.Maindeck) {
+        categories.Maindeck.forEach(card => {
+          decklist += `${card.quantity} ${card.card.oracleCard.name}\n`;
+        });
+      }
+      
+      // Sideboard
+      if (categories.Sideboard) {
+        decklist += '\nSideboard\n';
+        categories.Sideboard.forEach(card => {
+          decklist += `${card.quantity} ${card.card.oracleCard.name}\n`;
+        });
+      }
+      
+      // Commander
+      if (categories.Commander) {
+        decklist += '\nCommander\n';
+        categories.Commander.forEach(card => {
+          decklist += `${card.quantity} ${card.card.oracleCard.name}\n`;
+        });
+      }
+    }
+    
+    return decklist;
+  }
+  
+  throw new Error('Unsupported deck site. Supported: Moxfield, MTGGoldfish, MTGTop8, Archidekt');
+}
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 // Normalise any bracket style to its inner content
@@ -1667,10 +1884,20 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
     <div class="modal-section">
       <h4>Quick Instructions</h4>
       <ul>
-        <li>Enter card names (one per line) or upload a .txt file</li>
+        <li>Enter card names (one per line), upload a .txt file, or import from a deck URL</li>
         <li>Select image quality and options (Paper Only, First Print)</li>
         <li>Click "Summon Cards" to fetch from Scryfall</li>
         <li>Download individual images or visual decklist</li>
+      </ul>
+    </div>
+    
+    <div class="modal-section">
+      <h4>Supported Import Sources</h4>
+      <ul>
+        <li>Moxfield (via API)</li>
+        <li>MTGGoldfish (via export)</li>
+        <li>MTGTop8 (via export)</li>
+        <li>Archidekt (via API)</li>
       </ul>
     </div>
     
