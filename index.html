@@ -1585,17 +1585,21 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
     setProgress(currentIndex,allEntries.length);
     
+    // CRITICAL FIX: Declare variables outside try block for proper scope
+    const batchKey = `${entry.name}_${entry.set}`;
+    let fromCache = false;
+    let wasBatched = false;
+    
     try{
       // Check batch results first
-      const batchKey = `${entry.name}_${entry.set}`;
       let card = batchResults.get(batchKey);
-      let fromCache = false;
       
       if (!card) {
         card = await fetchCard(entry);
         fromCache = card._fromCache || false;
       } else {
         // Card from batch results
+        wasBatched = true;
         fromCache = false;
       }
       
@@ -1631,8 +1635,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     }catch(e){log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     currentIndex++;
     
-    // Skip delay for cached results
-    if (!fromCache && !batchResults.has(batchKey)) {
+    // Skip delay for cached results or batch-fetched cards
+    if (!fromCache && !wasBatched) {
       await sleep(DELAY);
     }
   }
@@ -1643,17 +1647,21 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     const displayName=entry.name||(entry.set&&entry.number?`${entry.set.toUpperCase()} #${entry.number}`:'Unknown');
     setProgress(currentIndex,allEntries.length);
     
+    // CRITICAL FIX: Declare variables outside try block for proper scope
+    const batchKey = `${entry.name}_${entry.set}`;
+    let fromCache = false;
+    let wasBatched = false;
+    
     try{
       // Check batch results first
-      const batchKey = `${entry.name}_${entry.set}`;
       let card = batchResults.get(batchKey);
-      let fromCache = false;
       
       if (!card) {
         card = await fetchCard(entry);
         fromCache = card._fromCache || false;
       } else {
         // Card from batch results
+        wasBatched = true;
         fromCache = false;
       }
       
@@ -1689,8 +1697,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     }catch(e){log(`✕  ${displayName}: ${e.message}`,'e');err++;}
     currentIndex++;
     
-    // Skip delay for cached results
-    if (!fromCache && !batchResults.has(batchKey)) {
+    // Skip delay for cached results or batch-fetched cards
+    if (!fromCache && !wasBatched) {
       await sleep(DELAY);
     }
   }
@@ -1728,10 +1736,15 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
       
       const img = document.createElement('img');
-      // Use blob URL instead of imgUrl for display
+      // CRITICAL FIX: Use blob URL instead of imgUrl for display
       img.src = URL.createObjectURL(card.blob);
       img.alt = card.name;
       img.loading = 'lazy';
+      
+      // Clean up blob URL after image loads to prevent memory leaks
+      img.onload = () => {
+        URL.revokeObjectURL(img.src);
+      };
       
       const overlay = document.createElement('div');
       overlay.className = 'card-overlay';
