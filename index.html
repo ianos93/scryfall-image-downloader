@@ -890,8 +890,9 @@ function buildUrl(entry, fuzzy=false) {
 const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|about|commander|companion|maybeboard|maybe\s?board|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
 
 function parseNamesWithSections(raw){
-  const seen=new Set();
   const sections = { main: [], sideboard: [] };
+  const seenMain = new Set();
+  const seenSideboard = new Set();
   let currentSection = 'main';
   
   raw.split('\n')
@@ -910,6 +911,7 @@ function parseNamesWithSections(raw){
       
       const entry = parseLine(line);
       const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
+      const seen = currentSection === 'main' ? seenMain : seenSideboard;
       
       if(!entry.name&&!entry.set||seen.has(key.toLowerCase())) return;
       seen.add(key.toLowerCase());
