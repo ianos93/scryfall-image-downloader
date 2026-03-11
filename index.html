@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src https: 'self'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -202,6 +202,12 @@
     border-color: rgba(255,100,100,0.6) !important;
     box-shadow: 0 0 0 3px rgba(255,80,80,0.15) !important;
     animation: shakeInput 0.35s ease;
+  }
+  
+  /* URL input focus state to match textarea */
+  #deck-url-input:focus {
+    border-color: rgba(156,140,185,0.35);
+    box-shadow: 0 0 0 3px rgba(150,100,220,0.1);
   }
   @keyframes shakeInput {
     0%,100% { transform: translateX(0); }
@@ -700,7 +706,7 @@
         
         <!-- URL import tab -->
         <div id="import-url" style="display: none; position: absolute; width: 100%; top: 0; left: 0;">
-          <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGGoldfish, MTGTop8, Archidekt)" style="width: 100%; padding: 14px 16px; background: rgba(20,8,35,0.7); border: 1px solid rgba(156,140,185,0.15); border-radius: 10px; color: var(--pearl); font-size: 14px; margin-bottom: 12px; font-family: 'Jost', sans-serif; font-weight: 200; outline: none; transition: border-color 0.2s, box-shadow 0.2s;">
+          <input type="text" id="deck-url-input" placeholder="Paste deck URL (Moxfield, MTGTop8, Archidekt)…" style="width: 100%; padding: 14px 16px; background: rgba(20,8,35,0.7); border: 1px solid rgba(156,140,185,0.15); border-radius: 10px; color: var(--pearl); font-size: 14px; margin-bottom: 12px; font-family: 'Jost', sans-serif; font-weight: 200; outline: none; transition: border-color 0.2s, box-shadow 0.2s; box-sizing: border-box;">
           <button id="import-url-btn" style="width: 100%; padding: 12px; background: rgba(72,31,111,0.4); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 12px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.1em; font-family: 'Jost', sans-serif; font-weight: 400;">
             IMPORT DECK
           </button>
@@ -928,7 +934,7 @@ document.getElementById('import-url-btn').addEventListener('click', async () => 
     }
   } catch (e) {
     console.error('URL import error:', e);
-    statusEl.textContent = `✗ Import failed: ${e.message}`;
+    statusEl.textContent = `✕ Import failed: ${e.message}`;
     statusEl.style.color = 'rgba(255,100,100,0.8)';
   }
 });
@@ -982,20 +988,12 @@ async function importDeckFromUrl(url) {
     return decklist;
   }
   
-  // MTGGoldfish - has export endpoint
+  // MTGGoldfish - CORS blocked, cannot fetch client-side
   if (urlLower.includes('mtggoldfish.com')) {
-    const deckId = url.match(/deck\/(\d+)/)?.[1];
-    if (!deckId) throw new Error('Invalid MTGGoldfish URL');
-    
-    const exportUrl = `https://www.mtggoldfish.com/deck/download/${deckId}`;
-    const res = await fetch(exportUrl);
-    if (!res.ok) throw new Error('Failed to fetch from MTGGoldfish');
-    const text = await res.text();
-    
-    return text;
+    throw new Error('MTGGoldfish blocks client-side imports. Please export the deck as a text file and upload it instead.');
   }
   
-  // MTGDecks.net - scrape the page
+  // MTGDecks.net - CORS blocked
   if (urlLower.includes('mtgdecks.net')) {
     throw new Error('MTGDecks.net requires manual export. Please copy the decklist and paste it directly.');
   }
@@ -1062,7 +1060,7 @@ async function importDeckFromUrl(url) {
     return decklist;
   }
   
-  throw new Error('Unsupported deck site. Supported: Moxfield, MTGGoldfish, MTGTop8, Archidekt');
+  throw new Error('Unsupported deck site. Supported: Moxfield, MTGTop8, Archidekt');
 }
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
@@ -1912,7 +1910,6 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
       <h4>Supported Import Sources</h4>
       <ul>
         <li>Moxfield (via API)</li>
-        <li>MTGGoldfish (via export)</li>
         <li>MTGTop8 (via export)</li>
         <li>Archidekt (via API)</li>
       </ul>
