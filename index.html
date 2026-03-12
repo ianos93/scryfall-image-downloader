@@ -1265,7 +1265,7 @@ async function fetchCard(entry) {
     }
   }
 
-  // First Print - OPTIMIZED: Only search if needed
+  // First Print - OPTIMIZED: Only search if needed, exclude promos
   if (firstPrint && card) {
     // Check if we need to search (skip if card is likely already first print)
     const needsFirstPrintCheck = !entry.set || entry.set !== card.set;
@@ -1273,7 +1273,8 @@ async function fetchCard(entry) {
     if (needsFirstPrintCheck) {
       await sleep(DELAY);
       const gameFilter = paperOnly ? '+game:paper' : '';
-      const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}&order=released&dir=asc&unique=prints`;
+      // Exclude promos, special releases, and prefer the true first printing
+      const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}${gameFilter}+-is:promo+-is:digital&order=released&dir=asc&unique=prints`;
       const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
       const fd = await fr.json();
       if (fr.ok && fd.data && fd.data.length > 0) {
