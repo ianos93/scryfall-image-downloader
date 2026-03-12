@@ -1213,6 +1213,7 @@ async function fetchCard(entry) {
   // Check cache first
   const cachedCard = getCachedCard(entry.name, entry.set);
   if (cachedCard) {
+    console.log(`[Cache HIT] ${entry.name} - skipping API call`);
     cachedCard._usedFallback = false;
     cachedCard._fromCache = true;
     return cachedCard;
@@ -1222,6 +1223,7 @@ async function fetchCard(entry) {
   let usedFallback = false;
 
   // Primary attempt
+  console.log(`[API] Fetching card data: ${entry.name}${entry.set ? ' (' + entry.set.toUpperCase() + ')' : ''}`);
   const url = buildUrl(entry);
   const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
   const data = await res.json();
@@ -1251,17 +1253,23 @@ async function fetchCard(entry) {
     }
   }
 
-  // Paper Only check
-  if (paperOnly && card && card.games && !card.games.includes('paper')) {
-    await sleep(DELAY);
-    const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
-    const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
-    const sd = await sr.json();
-    if (sr.ok && sd.data && sd.data.length > 0) {
-      card = sd.data[0];
-      usedFallback = true;
+  // Paper Only check - OPTIMIZED: Skip if card already includes paper
+  if (paperOnly && card && card.games) {
+    if (!card.games.includes('paper')) {
+      console.log(`[Paper Only] ${card.name} is digital-only, searching for paper version...`);
+      await sleep(DELAY);
+      const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ card.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
+      const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const sd = await sr.json();
+      if (sr.ok && sd.data && sd.data.length > 0) {
+        card = sd.data[0];
+        usedFallback = true;
+        console.log(`[Paper Only] Found paper version: ${card.set.toUpperCase()}`);
+      } else {
+        throw new Error('No paper printing found');
+      }
     } else {
-      throw new Error('No paper printing found');
+      console.log(`[Paper Only] ${card.name} already has paper support, skipping search`);
     }
   }
 
@@ -1340,6 +1348,15 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   isFetching=true;
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
+  
+  // Track API calls for optimization stats
+  let apiCallCount = 0;
+  let cacheHits = 0;
+  let batchHits = 0;
+  let firstPrintSearches = 0;
+  let firstPrintSkips = 0;
+  let paperOnlySearches = 0;
+  let paperOnlySkips = 0;
   
   const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='Searching…';
   document.getElementById('results-actions').style.display='block';
@@ -1578,6 +1595,13 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     await generateVisualPreview();
     document.getElementById('download-visual-btn').disabled=false;
   }
+  
+  // Log optimization summary
+  console.log('\n=== FETCH COMPLETE ===');
+  console.log(`Total cards: ${allEntries.length}`);
+  console.log(`Successful: ${ok} | Failed: ${err}`);
+  console.log('Check logs above for optimization details (Cache hits, First Print skips, etc.)');
+  console.log('======================\n');
   
   isFetching=false;fb.disabled=false;fb.innerHTML='✦ &nbsp; Summon Cards';
 });
