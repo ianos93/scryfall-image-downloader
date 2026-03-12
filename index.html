@@ -1265,12 +1265,22 @@ async function fetchCard(entry) {
     }
   }
 
-  // First Print - OPTIMIZED: Only search if needed, exclude promos
+  // First Print - OPTIMIZED: Skip search for cards already from old sets
   if (firstPrint && card) {
-    // Check if we need to search (skip if card is likely already first print)
-    const needsFirstPrintCheck = !entry.set || entry.set !== card.set;
+    // List of very early sets (Alpha through Revised era) - if card is from these, it's already first print
+    const earlySetCodes = ['lea', 'leb', '2ed', 'arn', 'atq', 'leg', '3ed', 'drk', 'fem', 'ice', 'chr', 'hml', 'all', 'mir', 'vis', 'wth', 'tmp', 'sth', 'exo', 'usg', 'ulg', 'uds'];
     
-    if (needsFirstPrintCheck) {
+    // Skip search if:
+    // 1. Card is already from an early set (pre-2000)
+    // 2. User specified a set AND it matches what we got
+    const cardIsFromEarlySet = card.set && earlySetCodes.includes(card.set.toLowerCase());
+    const userSpecifiedMatchingSet = entry.set && entry.set.toLowerCase() === card.set.toLowerCase();
+    const skipSearch = cardIsFromEarlySet || userSpecifiedMatchingSet;
+    
+    if (skipSearch) {
+      console.log(`[First Print] Skipping search for ${card.name} - already from ${card.set.toUpperCase()}`);
+    } else {
+      console.log(`[First Print] Searching for oldest printing of ${card.name}`);
       await sleep(DELAY);
       const gameFilter = paperOnly ? '+game:paper' : '';
       // Exclude promos, special releases, and prefer the true first printing
@@ -1280,8 +1290,11 @@ async function fetchCard(entry) {
       if (fr.ok && fd.data && fd.data.length > 0) {
         const oldest = fd.data[0];
         if (oldest.id !== card.id) {
+          console.log(`[First Print] Swapped ${card.set.toUpperCase()} → ${oldest.set.toUpperCase()}`);
           card = oldest;
           usedFallback = true;
+        } else {
+          console.log(`[First Print] ${card.name} already is first print`);
         }
       }
     }
