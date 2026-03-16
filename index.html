@@ -1164,32 +1164,45 @@ function parseNamesWithSections(raw){
   const seenSideboard = new Set();
   let currentSection = 'main';
   
+  console.log('[Parser] ========== STARTING PARSE ==========');
+  
   raw.split('\n')
     .map(l=>l.trim())
     .filter(l=>l&&!l.startsWith('#'))
-    .forEach(line => {
-      // IMPROVEMENT 1: Strip leading comment markers BEFORE checking for section headers
-      // This handles cases like "//Sideboard", "// Sideboard", "///Sideboard", etc.
-      const cleanLine = line.replace(/^[\/\#\*\-\s]+/, '').trim();
+    .forEach((line, lineNum) => {
+      console.log(`[Parser] Line ${lineNum}: "${line}"`);
       
-      // Check if this is a section header
-      if (DECK_HEADERS.test(cleanLine)) {
-        if (/sideboard|side\s?board/i.test(cleanLine)) {
+      // CRITICAL FIX: Check for section headers BEFORE any parsing
+      // Strip leading comment markers to handle //Sideboard, // Sideboard, etc.
+      const cleanLine = line.replace(/^[\/\#\*\-\s]+/, '').trim();
+      console.log(`[Parser] Line ${lineNum} after cleaning: "${cleanLine}"`);
+      
+      // Check if this is a section header (do this FIRST, before parseLine)
+      const isDeckHeader = DECK_HEADERS.test(cleanLine);
+      console.log(`[Parser] Line ${lineNum} DECK_HEADERS test: ${isDeckHeader}`);
+      
+      if (isDeckHeader) {
+        const isSideboard = /sideboard|side\s?board/i.test(cleanLine);
+        const isMain = /deck|main|commander|companion/i.test(cleanLine);
+        console.log(`[Parser] Line ${lineNum} isSideboard: ${isSideboard}, isMain: ${isMain}`);
+        
+        if (isSideboard) {
           currentSection = 'sideboard';
-          console.log(`[Parser] Detected SIDEBOARD section from: "${line}"`);
-        } else if (/deck|main|commander|companion/i.test(cleanLine)) {
+          console.log(`[Parser] ✓✓✓ SIDEBOARD DETECTED from: "${line}"`);
+        } else if (isMain) {
           currentSection = 'main';
-          console.log(`[Parser] Detected MAIN section from: "${line}"`);
+          console.log(`[Parser] ✓✓✓ MAIN DETECTED from: "${line}"`);
         }
-        return; // CRITICAL: Don't parse this line as a card
+        return; // CRITICAL: Skip this line, don't parse it as a card
       }
       
+      // Now parse the card
       const entry = parseLine(line);
       
       // CRITICAL FIX: After parsing, check again if the resulting name is a deck header
       // This catches cases where "Sideboard" alone becomes a card name after stripping markers
       if (entry.name && DECK_HEADERS.test(entry.name)) {
-        console.log(`[Parser] Skipping deck header keyword: "${entry.name}"`);
+        console.log(`[Parser] ⚠ Skipping deck header keyword: "${entry.name}"`);
         return;
       }
       
@@ -1200,10 +1213,10 @@ function parseNamesWithSections(raw){
       seen.add(key.toLowerCase());
       
       sections[currentSection].push(entry);
-      console.log(`[Parser] Added "${entry.name}" to ${currentSection.toUpperCase()} (qty: ${entry.quantity})`);
+      console.log(`[Parser] ➜ Added "${entry.name}" to ${currentSection.toUpperCase()} (qty: ${entry.quantity})`);
     });
   
-  console.log(`[Parser] Final counts - Main: ${sections.main.length}, Sideboard: ${sections.sideboard.length}`);
+  console.log(`[Parser] ========== FINAL COUNTS ========== Main: ${sections.main.length}, Sideboard: ${sections.sideboard.length}`);
   return sections;
 }
 
