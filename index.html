@@ -397,8 +397,50 @@
     50% { opacity: 0; transform: translateY(-8px); }
     100% { opacity: 1; transform: translateY(0); }
   }
-  .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 28px; overflow: hidden; }
+  .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 16px; overflow: hidden; }
   .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
+  
+  /* Phase summary badges */
+  .phase-summary {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .phase-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(20,8,35,0.5);
+    border: 1px solid rgba(156,140,185,0.15);
+    border-radius: 100px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(198,182,221,0.5);
+    opacity: 0.5;
+    transition: all 0.3s ease;
+  }
+  .phase-badge.active {
+    background: rgba(72,31,111,0.3);
+    border-color: var(--lavender);
+    color: var(--orchid);
+    opacity: 1;
+  }
+  .phase-badge.complete {
+    background: rgba(72,31,111,0.4);
+    border-color: rgba(156,140,185,0.3);
+    color: #C6B6DD;
+    opacity: 1;
+  }
+  .phase-badge .badge-icon {
+    font-size: 12px;
+  }
+  .phase-badge .badge-count {
+    font-weight: 500;
+    color: #F1EDF7;
+  }
 
 
   #card-grid {
@@ -781,6 +823,23 @@
 
   <div id="tab-individual" style="display:none; margin-top: 20px;">
     <div class="float-card">
+      <div class="phase-summary" id="phase-summary" style="display:none;">
+        <div class="phase-badge" id="badge-metadata">
+          <span class="badge-icon">📦</span>
+          <span>Card Data</span>
+          <span class="badge-count" id="count-metadata">0</span>
+        </div>
+        <div class="phase-badge" id="badge-options" style="display:none;">
+          <span class="badge-icon">⚙️</span>
+          <span>Options</span>
+          <span class="badge-count" id="count-options">0</span>
+        </div>
+        <div class="phase-badge" id="badge-images">
+          <span class="badge-icon">🖼️</span>
+          <span>Images</span>
+          <span class="badge-count" id="count-images">0</span>
+        </div>
+      </div>
       <div class="prog-row">
         <span id="progress-phase" style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
         <span id="progress-count">0 / 0</span>
@@ -1172,6 +1231,38 @@ function setProgressPhase(phase){
   setTimeout(()=>el.classList.remove('phase-change'),600);
 }
 
+// Update phase badge status
+function updatePhaseBadge(phaseId, status, count) {
+  const badge = document.getElementById(`badge-${phaseId}`);
+  const countEl = document.getElementById(`count-${phaseId}`);
+  
+  if (badge) {
+    badge.classList.remove('active', 'complete');
+    if (status === 'active') {
+      badge.classList.add('active');
+    } else if (status === 'complete') {
+      badge.classList.add('complete');
+    }
+  }
+  
+  if (countEl && count !== undefined) {
+    countEl.textContent = count;
+  }
+}
+
+function showPhaseSummary(showOptions) {
+  const summary = document.getElementById('phase-summary');
+  const optionsBadge = document.getElementById('badge-options');
+  
+  summary.style.display = 'flex';
+  
+  if (showOptions) {
+    optionsBadge.style.display = 'inline-flex';
+  } else {
+    optionsBadge.style.display = 'none';
+  }
+}
+
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
 function tileOk(el,name,url,scryfallUrl,setCode){
   el.style.cursor='pointer';
@@ -1462,6 +1553,14 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('btn-individual').classList.add('active');
   document.getElementById('btn-visual').classList.remove('active');
   
+  // Show phase summary
+  showPhaseSummary(paperOnly || firstPrint);
+  updatePhaseBadge('metadata', 'inactive', 0);
+  if (paperOnly || firstPrint) {
+    updatePhaseBadge('options', 'inactive', 0);
+  }
+  updatePhaseBadge('images', 'inactive', 0);
+  
   const grid = document.getElementById('card-grid');
   grid.innerHTML='';
   grid.style.display='none'; // Hide grid during fetch
@@ -1477,6 +1576,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   // Phase 1: Fetch all card metadata
   console.log('\n=== PHASE 1: Fetching card metadata ===');
   setProgressPhase('Retrieving Card Data');
+  updatePhaseBadge('metadata', 'active', 0);
+  
   const cardMetadataMap = new Map(); // key: entry index, value: card object
   
   // Create fetch queue for parallel requests (5 concurrent, 120ms delay between each)
@@ -1512,7 +1613,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     
     completedMetadata++;
     setProgress(completedMetadata, allEntries.length);
+    updatePhaseBadge('metadata', 'active', completedMetadata);
   }
+  
+  // Mark Phase 1 complete
+  updatePhaseBadge('metadata', 'complete', cardMetadataMap.size);
   
   console.log(`\n=== PHASE 2: Applying options (Paper Only: ${paperOnly}, First Print: ${firstPrint}) ===`);
   // Phase 2: Apply Paper Only and First Print transformations
@@ -1522,6 +1627,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if (paperOnly || firstPrint) {
     setProgressPhase('Applying Options');
     setProgress(0, cardMetadataMap.size);
+    updatePhaseBadge('options', 'active', 0);
     
     // Create fetch queue for parallel option processing
     const optionsQueue = new FetchQueue(5, 120);
@@ -1554,7 +1660,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       completedOptions++;
       setProgress(completedOptions, cardMetadataMap.size);
+      updatePhaseBadge('options', 'active', completedOptions);
     }
+    
+    // Mark Phase 2 complete
+    updatePhaseBadge('options', 'complete', transformedCards.size);
   } else {
     // No options enabled, just copy cards over
     for (const [idx, card] of cardMetadataMap.entries()) {
@@ -1566,6 +1676,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   // Phase 3: Fetch all images (we now have final set/collector numbers)
   setProgressPhase('Retrieving Card Images');
   setProgress(0, transformedCards.size);
+  updatePhaseBadge('images', 'active', 0);
   
   // Create fetch queue for parallel image downloads
   const imageQueue = new FetchQueue(5, 120);
@@ -1623,6 +1734,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       });
       
       visualDeckData[section].push(imageData);
+      console.log(`[VISUAL] Added "${imageData.name}" to ${section.toUpperCase()} (quantity: ${imageData.quantity})`);
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
       const cacheNote = card._fromCache ? ' 💾' : '';
@@ -1632,7 +1744,13 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     
     completedImages++;
     setProgress(completedImages, transformedCards.size);
+    updatePhaseBadge('images', 'active', completedImages);
   }
+  
+  // Mark Phase 3 complete
+  updatePhaseBadge('images', 'complete', ok);
+  
+  console.log(`[VISUAL] Final deck composition - Main: ${visualDeckData.main.length} cards, Sideboard: ${visualDeckData.sideboard.length} cards`);
   
   setProgress(allEntries.length,allEntries.length);
   document.getElementById('stats-bar').style.display='flex';
@@ -1735,6 +1853,14 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
 
 // Generate visual preview (5-column main grid + 1-column sideboard on right)
 async function generateVisualPreview() {
+  console.log('[VISUAL] === Generating Visual Preview ===');
+  console.log('[VISUAL] Main deck cards:', visualDeckData.main.length);
+  console.log('[VISUAL] Sideboard cards:', visualDeckData.sideboard.length);
+  
+  if (visualDeckData.sideboard.length > 0) {
+    console.log('[VISUAL] Sideboard card names:', visualDeckData.sideboard.map(c => c.name).join(', '));
+  }
+  
   const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
   const SIDEBOARD_MAX_PER_STACK = 15; // Sideboard stacks hold more cards
@@ -1765,6 +1891,13 @@ async function generateVisualPreview() {
   
   const mainStacks = createStacks(visualDeckData.main, MAX_PER_STACK);
   const sideStacks = createStacks(visualDeckData.sideboard, SIDEBOARD_MAX_PER_STACK);
+  
+  console.log('[VISUAL] Main stacks created:', mainStacks.length, 'stacks');
+  console.log('[VISUAL] Sideboard stacks created:', sideStacks.length, 'stacks');
+  
+  if (sideStacks.length > 0) {
+    console.log('[VISUAL] First sideboard stack has', sideStacks[0].length, 'cards');
+  }
   
   const mainRows = Math.ceil(mainStacks.length / MAIN_COLS);
   const sideRows = sideStacks.length;
