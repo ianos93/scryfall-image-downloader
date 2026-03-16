@@ -1156,7 +1156,7 @@ function buildUrl(entry, fuzzy=false) {
   return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
 }
 
-const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|about|commander|companion|maybeboard|maybe\s?board|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?)$/i;
+const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|about|commander|companion|maybeboard|maybe\s?board|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?):?$/i;
 
 function parseNamesWithSections(raw){
   const sections = { main: [], sideboard: [] };
@@ -1165,11 +1165,14 @@ function parseNamesWithSections(raw){
   let currentSection = 'main';
   
   console.log('[Parser] ========== STARTING PARSE ==========');
+  console.log('[Parser] Raw input length:', raw.length, 'characters');
+  console.log('[Parser] First 500 chars:', raw.substring(0, 500));
   
-  raw.split('\n')
-    .map(l=>l.trim())
-    .filter(l=>l&&!l.startsWith('#'))
-    .forEach((line, lineNum) => {
+  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));
+  console.log('[Parser] Total lines after filtering:', lines.length);
+  
+  lines.forEach((line, lineNum) => {
+      console.log(`[Parser] ──────────────────────────────────`);
       console.log(`[Parser] Line ${lineNum}: "${line}"`);
       
       // CRITICAL FIX: Check for section headers BEFORE any parsing
