@@ -386,6 +386,17 @@
   /* Progress */
   #progress-section { display: none; margin-top: 28px; }
   .prog-row { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.2em; color: #F1EDF7; opacity: 0.65; margin-bottom: 8px; }
+  #progress-phase { 
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  #progress-phase.phase-change {
+    animation: phaseChange 0.6s ease;
+  }
+  @keyframes phaseChange {
+    0% { opacity: 1; transform: translateY(0); }
+    50% { opacity: 0; transform: translateY(-8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
   .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 28px; overflow: hidden; }
   .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
 
@@ -771,7 +782,7 @@
   <div id="tab-individual" style="display:none; margin-top: 20px;">
     <div class="float-card">
       <div class="prog-row">
-        <span style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
+        <span id="progress-phase" style="letter-spacing:.25em;text-transform:uppercase;">Retrieving</span>
         <span id="progress-count">0 / 0</span>
       </div>
       <div class="prog-track"><div class="prog-fill" id="progress-bar"></div></div>
@@ -1102,6 +1113,12 @@ function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
+function setProgressPhase(phase){
+  const el=document.getElementById('progress-phase');
+  el.classList.add('phase-change');
+  el.textContent=phase;
+  setTimeout(()=>el.classList.remove('phase-change'),600);
+}
 
 function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
 function tileOk(el,name,url,scryfallUrl,setCode){
@@ -1390,7 +1407,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
   
-  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='Searching…';
+  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='✦ Retrieving…';
   document.getElementById('results-actions').style.display='block';
   document.getElementById('tab-individual').style.display='block';
   document.getElementById('tab-visual').style.display='none';
@@ -1411,6 +1428,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   // IMPROVEMENT 2: NEW OPTIMIZED FETCH FLOW
   // Phase 1: Fetch all card metadata
   console.log('\n=== PHASE 1: Fetching card metadata ===');
+  setProgressPhase('Retrieving Card Data');
   const cardMetadataMap = new Map(); // key: entry index, value: card object
   
   for (let i = 0; i < allEntries.length; i++) {
@@ -1437,25 +1455,41 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   // Phase 2: Apply Paper Only and First Print transformations
   const transformedCards = new Map();
   
-  for (const [idx, card] of cardMetadataMap.entries()) {
-    try {
-      const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
-      transformedCards.set(idx, transformedCard);
-      
-      // Don't delay for cached results
-      if (!card._fromCache) {
-        await sleep(DELAY);
+  // Only show this phase if options are enabled
+  if (paperOnly || firstPrint) {
+    setProgressPhase('Applying Options');
+    setProgress(0, cardMetadataMap.size);
+    
+    let optionIndex = 0;
+    for (const [idx, card] of cardMetadataMap.entries()) {
+      try {
+        const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
+        transformedCards.set(idx, transformedCard);
+        
+        // Don't delay for cached results
+        if (!card._fromCache) {
+          await sleep(DELAY);
+        }
+      } catch (e) {
+        const entry = allEntries[idx];
+        const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
+        log(`✕  ${displayName}: ${e.message}`, 'e');
+        err++;
       }
-    } catch (e) {
-      const entry = allEntries[idx];
-      const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-      log(`✕  ${displayName}: ${e.message}`, 'e');
-      err++;
+      
+      optionIndex++;
+      setProgress(optionIndex, cardMetadataMap.size);
+    }
+  } else {
+    // No options enabled, just copy cards over
+    for (const [idx, card] of cardMetadataMap.entries()) {
+      transformedCards.set(idx, card);
     }
   }
   
   console.log(`\n=== PHASE 3: Fetching images ===`);
   // Phase 3: Fetch all images (we now have final set/collector numbers)
+  setProgressPhase('Retrieving Card Images');
   setProgress(0, transformedCards.size);
   let imageIndex = 0;
   
