@@ -901,9 +901,13 @@ function isSetCode(s) {
 }
 
 // Is this token a BARE (unbracketed) set code?
-// Must be all-uppercase (e.g. M10, BRO, MH3) to avoid matching card name words like "Bolt", "Fire"
+// Must be all-uppercase (e.g. M10, BRO, MH3, 6ED, 10E) to avoid matching card name words like "Bolt", "Fire"
+// Special case: Allow number-starting sets like 6ED, but require at least one letter
 function isBareSetCode(s) {
-  return /^[A-Z][A-Z0-9]{1,5}$/.test(s);
+  // Must be 2-6 characters, all uppercase alphanumeric, with at least one letter
+  if (!/^[A-Z0-9]{2,6}$/.test(s)) return false;
+  if (!/[A-Z]/.test(s)) return false; // Must have at least one letter
+  return true;
 }
 
 // Is this token a collector number? digits, optional letter suffix (e.g. 123a)
