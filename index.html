@@ -972,17 +972,37 @@ function parseLine(raw) {
   const nameParts = [];
 
   // Walk from the end, pulling off set/number tokens we haven't found yet
+  let lastNameIndex = parts.length - 1;
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
-    if (!number && isCollectorNum(p)) { number = p; continue; }
+    if (!number && isCollectorNum(p)) { 
+      console.log(`[Parser] Found collector number: ${p}`);
+      number = p;
+      lastNameIndex = i - 1;
+      continue; 
+    }
     // Only treat bare (unbracketed) token as set code if it's ALL-CAPS like M10, BRO, MH3
-    if (!set && isBareSetCode(p) && i > 0) { set = p.toLowerCase(); continue; }
-    // Once we hit something that's clearly a name word, stop
+    if (!set && isBareSetCode(p) && i > 0) { 
+      console.log(`[Parser] Found set code: ${p}`);
+      set = p.toLowerCase();
+      lastNameIndex = i - 1;
+      continue; 
+    }
+    // This is a name word - take everything from start to here
+    console.log(`[Parser] Found name part at index ${i}: ${p}`);
     nameParts.unshift(...parts.slice(0, i + 1));
     break;
   }
 
+  // If we never found a name part (all tokens were set/number), take what's left
+  if (nameParts.length === 0 && lastNameIndex >= 0) {
+    nameParts.unshift(...parts.slice(0, lastNameIndex + 1));
+    console.log(`[Parser] Remaining tokens as name: ${nameParts.join(' ')}`);
+  }
+
   const name = nameParts.join(' ').trim() || null;
+  
+  console.log(`[Parser] Result: name="${name}", set="${set}", number="${number}"`);
 
   return { raw, name, set, number, quantity };
 }
@@ -1815,8 +1835,12 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
         <li>Card names: <code>Lightning Bolt</code></li>
         <li>With quantities: <code>4 Lightning Bolt</code> or <code>4x Lightning Bolt</code></li>
         <li>With set codes: <code>Lightning Bolt (M10)</code> or <code>Lightning Bolt M10</code></li>
+        <li>With collector numbers: <code>Savannah Lions DMR 270</code> or <code>Lightning Bolt M10 #341</code></li>
         <li>Deck sections: <code>Deck</code>, <code>Sideboard</code>, <code>Commander</code></li>
       </ul>
+      <div style="margin-top: 12px; font-size: 11px; color: rgba(241,237,247,0.5); line-height: 1.6;">
+        <strong>Tip:</strong> Use set codes + collector numbers to fetch specific printings (e.g., <code>Sol Ring 6ED 350</code>)
+      </div>
     </div>
   </div>
 </div>
