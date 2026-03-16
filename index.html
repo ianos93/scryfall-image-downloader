@@ -921,6 +921,50 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+// Rate-limited parallel fetch queue
+class FetchQueue {
+  constructor(maxConcurrent = 5, delayMs = 120) {
+    this.maxConcurrent = maxConcurrent;
+    this.delayMs = delayMs;
+    this.queue = [];
+    this.active = 0;
+    this.lastFetchTime = 0;
+  }
+  
+  async add(fetchFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ fetchFn, resolve, reject });
+      this.process();
+    });
+  }
+  
+  async process() {
+    if (this.active >= this.maxConcurrent || this.queue.length === 0) return;
+    
+    const { fetchFn, resolve, reject } = this.queue.shift();
+    this.active++;
+    
+    try {
+      // Rate limiting: ensure minimum delay between requests
+      const now = Date.now();
+      const timeSinceLastFetch = now - this.lastFetchTime;
+      if (timeSinceLastFetch < this.delayMs) {
+        await sleep(this.delayMs - timeSinceLastFetch);
+      }
+      this.lastFetchTime = Date.now();
+      
+      const result = await fetchFn();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      this.active--;
+      this.process(); // Process next item
+    }
+  }
+}
+
 // Normalise any bracket style to its inner content
 function stripBrackets(s) {
   return s.replace(/[\(\)\[\]<>]/g, '').trim();
@@ -1078,10 +1122,18 @@ function parseNamesWithSections(raw){
           currentSection = 'main';
           console.log(`[Parser] Detected MAIN section from: "${line}"`);
         }
-        return;
+        return; // CRITICAL: Don't parse this line as a card
       }
       
       const entry = parseLine(line);
+      
+      // CRITICAL FIX: After parsing, check again if the resulting name is a deck header
+      // This catches cases where "Sideboard" alone becomes a card name after stripping markers
+      if (entry.name && DECK_HEADERS.test(entry.name)) {
+        console.log(`[Parser] Skipping deck header keyword: "${entry.name}"`);
+        return;
+      }
+      
       const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
       const seen = currentSection === 'main' ? seenMain : seenSideboard;
       
@@ -1248,7 +1300,6 @@ async function fetchCardMetadata(entry) {
     card = data;
   } else {
     // First retry: fuzzy version of the same query (catches minor typos)
-    await sleep(DELAY);
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
       const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
@@ -1258,7 +1309,6 @@ async function fetchCardMetadata(entry) {
 
     // Second retry: name-only fuzzy (ignores bad set/number)
     if (!card && entry.name && (entry.set || entry.number)) {
-      await sleep(DELAY);
       const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
       const data3 = await res3.json();
       if (!res3.ok) throw new Error(data3.details||'Not found');
@@ -1284,7 +1334,6 @@ async function applyCardOptions(card, options) {
   if (options.paperOnly && modifiedCard.games) {
     if (!modifiedCard.games.includes('paper')) {
       console.log(`[Paper Only] ${modifiedCard.name} is digital-only, searching for paper version...`);
-      await sleep(DELAY);
       const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
       const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
       const sd = await sr.json();
@@ -1317,7 +1366,6 @@ async function applyCardOptions(card, options) {
       console.log(`[First Print] Skipping search for ${modifiedCard.name} - already from ${modifiedCard.set.toUpperCase()}`);
     } else {
       console.log(`[First Print] Searching for oldest printing of ${modifiedCard.name}`);
-      await sleep(DELAY);
       const gameFilter = options.paperOnly ? '+game:paper' : '';
       // Exclude promos, special releases, and prefer the true first printing
       const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}${gameFilter}+-is:promo+-is:digital&order=released&dir=asc&unique=prints`;
@@ -1431,24 +1479,39 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgressPhase('Retrieving Card Data');
   const cardMetadataMap = new Map(); // key: entry index, value: card object
   
-  for (let i = 0; i < allEntries.length; i++) {
-    const entry = allEntries[i];
-    const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-    
-    try {
-      const card = await fetchCardMetadata(entry);
-      cardMetadataMap.set(i, card);
+  // Create fetch queue for parallel requests (5 concurrent, 120ms delay between each)
+  const metadataQueue = new FetchQueue(5, 120);
+  
+  // Queue all metadata fetches
+  const metadataPromises = allEntries.map((entry, i) => {
+    return metadataQueue.add(async () => {
+      const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
       
-      // Don't delay for cached results
-      if (!card._fromCache) {
-        await sleep(DELAY);
+      try {
+        const card = await fetchCardMetadata(entry);
+        return { index: i, card, error: null };
+      } catch (e) {
+        return { index: i, card: null, error: e.message };
       }
-    } catch (e) {
-      log(`✕  ${displayName}: ${e.message}`, 'e');
+    });
+  });
+  
+  // Process results as they come in
+  let completedMetadata = 0;
+  for (const promise of metadataPromises) {
+    const result = await promise;
+    
+    if (result.error) {
+      const entry = allEntries[result.index];
+      const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
+      log(`✕  ${displayName}: ${result.error}`, 'e');
       err++;
+    } else {
+      cardMetadataMap.set(result.index, result.card);
     }
     
-    setProgress(i + 1, allEntries.length);
+    completedMetadata++;
+    setProgress(completedMetadata, allEntries.length);
   }
   
   console.log(`\n=== PHASE 2: Applying options (Paper Only: ${paperOnly}, First Print: ${firstPrint}) ===`);
@@ -1460,25 +1523,37 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgressPhase('Applying Options');
     setProgress(0, cardMetadataMap.size);
     
-    let optionIndex = 0;
-    for (const [idx, card] of cardMetadataMap.entries()) {
-      try {
-        const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
-        transformedCards.set(idx, transformedCard);
-        
-        // Don't delay for cached results
-        if (!card._fromCache) {
-          await sleep(DELAY);
+    // Create fetch queue for parallel option processing
+    const optionsQueue = new FetchQueue(5, 120);
+    
+    // Queue all option transformations
+    const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
+      return optionsQueue.add(async () => {
+        try {
+          const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
+          return { index: idx, card: transformedCard, error: null };
+        } catch (e) {
+          return { index: idx, card: null, error: e.message };
         }
-      } catch (e) {
-        const entry = allEntries[idx];
+      });
+    });
+    
+    // Process results as they come in
+    let completedOptions = 0;
+    for (const promise of optionPromises) {
+      const result = await promise;
+      
+      if (result.error) {
+        const entry = allEntries[result.index];
         const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-        log(`✕  ${displayName}: ${e.message}`, 'e');
+        log(`✕  ${displayName}: ${result.error}`, 'e');
         err++;
+      } else {
+        transformedCards.set(result.index, result.card);
       }
       
-      optionIndex++;
-      setProgress(optionIndex, cardMetadataMap.size);
+      completedOptions++;
+      setProgress(completedOptions, cardMetadataMap.size);
     }
   } else {
     // No options enabled, just copy cards over
@@ -1491,47 +1566,55 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   // Phase 3: Fetch all images (we now have final set/collector numbers)
   setProgressPhase('Retrieving Card Images');
   setProgress(0, transformedCards.size);
-  let imageIndex = 0;
   
-  // Process main deck
+  // Create fetch queue for parallel image downloads
+  const imageQueue = new FetchQueue(5, 120);
+  
+  // Separate main and sideboard cards
   const mainIndexes = sections.main.map((_, i) => i);
+  const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
+  
+  // Queue all image fetches
+  const imageFetchData = [];
+  
+  // Add main deck cards
   for (const idx of mainIndexes) {
     const card = transformedCards.get(idx);
-    if (!card) continue;
-    
-    try {
-      const imageData = await fetchCardImage(card, selectedSize);
-      
-      fetchedImages.push({
-        name: imageData.name,
-        blob: imageData.blob,
-        filename: imageData.filename
-      });
-      
-      visualDeckData.main.push(imageData);
-      
-      const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
-      const cacheNote = card._fromCache ? ' 💾' : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
-      ok++;
-    } catch (e) {
-      log(`✕  ${card.name}: ${e.message}`, 'e');
-      err++;
+    if (card) {
+      imageFetchData.push({ idx, card, section: 'main' });
     }
-    
-    imageIndex++;
-    setProgress(imageIndex, transformedCards.size);
-    await sleep(DELAY);
   }
   
-  // Process sideboard
-  const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
+  // Add sideboard cards
   for (const idx of sideIndexes) {
     const card = transformedCards.get(idx);
-    if (!card) continue;
+    if (card) {
+      imageFetchData.push({ idx, card, section: 'sideboard' });
+    }
+  }
+  
+  // Queue all image fetches in parallel
+  const imagePromises = imageFetchData.map(({ card, section }) => {
+    return imageQueue.add(async () => {
+      try {
+        const imageData = await fetchCardImage(card, selectedSize);
+        return { imageData, section, card, error: null };
+      } catch (e) {
+        return { imageData: null, section, card, error: e.message };
+      }
+    });
+  });
+  
+  // Process results as they come in
+  let completedImages = 0;
+  for (const promise of imagePromises) {
+    const result = await promise;
     
-    try {
-      const imageData = await fetchCardImage(card, selectedSize);
+    if (result.error) {
+      log(`✕  ${result.card.name}: ${result.error}`, 'e');
+      err++;
+    } else {
+      const { imageData, section, card } = result;
       
       fetchedImages.push({
         name: imageData.name,
@@ -1539,20 +1622,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         filename: imageData.filename
       });
       
-      visualDeckData.sideboard.push(imageData);
+      visualDeckData[section].push(imageData);
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
       const cacheNote = card._fromCache ? ' 💾' : '';
       log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
       ok++;
-    } catch (e) {
-      log(`✕  ${card.name}: ${e.message}`, 'e');
-      err++;
     }
     
-    imageIndex++;
-    setProgress(imageIndex, transformedCards.size);
-    await sleep(DELAY);
+    completedImages++;
+    setProgress(completedImages, transformedCards.size);
   }
   
   setProgress(allEntries.length,allEntries.length);
