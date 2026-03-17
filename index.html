@@ -1543,7 +1543,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
-  document.getElementById('proxy-btn').disabled=true;
+  document.getElementById('proxy-generate-btn').disabled=true;
   setProgress(0,allEntries.length);
   
   let ok=0,err=0;
@@ -1700,7 +1700,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(allEntries.length,allEntries.length);
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
-  document.getElementById('proxy-btn').disabled=ok===0;
+  document.getElementById('proxy-generate-btn').disabled=ok===0;
   
   if(ok > 0) {
     sortCards(visualDeckData.main);
@@ -2291,204 +2291,6 @@ window.addEventListener('scroll', () => {
 infoBtn.addEventListener('mouseenter', () => {
   infoBtn.classList.remove('hidden');
 });
-
-// ── Proxy Print ──────────────────────────────────────────────────────────────
-
-let proxyPaperSize = 'a4';   // 'a4' | 'a3'
-let proxyGap = 0;             // 0 | 2 | 5  (mm)
-let proxyUseQty = true;
-
-// Paper configs (all in mm)
-const PAPER = {
-  a4: { w: 210, h: 297 },
-  a3: { w: 297, h: 420 }
-};
-const CARD_W = 63, CARD_H = 88;
-
-function proxyLayout(paper, gap) {
-  const cols = Math.floor((paper.w + gap) / (CARD_W + gap));
-  const rows = Math.floor((paper.h + gap) / (CARD_H + gap));
-  const gridW = cols * CARD_W + (cols - 1) * gap;
-  const gridH = rows * CARD_H + (rows - 1) * gap;
-  const offX = (paper.w - gridW) / 2;
-  const offY = (paper.h - gridH) / 2;
-  return { cols, rows, perPage: cols * rows, offX, offY };
-}
-
-function updateProxySummary() {
-  const paper = PAPER[proxyPaperSize];
-  const layout = proxyLayout(paper, proxyGap);
-
-  // Build card list respecting quantities
-  let totalCards = 0;
-  if (proxyUseQty) {
-    const allCards = [...(visualDeckData.main || []), ...(visualDeckData.sideboard || [])];
-    allCards.forEach(c => { totalCards += (c.quantity || 1); });
-  } else {
-    totalCards = fetchedImages.length;
-  }
-
-  const pages = totalCards > 0 ? Math.ceil(totalCards / layout.perPage) : '—';
-  const gapLabel = proxyGap === 0 ? 'no gap' : `${proxyGap}mm gap`;
-  const sizeLabel = proxyPaperSize.toUpperCase();
-
-  document.getElementById('proxy-summary').innerHTML =
-    `${sizeLabel} · ${layout.cols}×${layout.rows} cards per page · ${gapLabel}<br>` +
-    `${totalCards} card${totalCards !== 1 ? 's' : ''} → <strong style="color:#F1EDF7">${pages} page${pages !== 1 ? 's' : ''}</strong>`;
-}
-
-// Toggle handlers
-['proxy-a4','proxy-a3'].forEach(id => {
-  document.getElementById(id).addEventListener('click', () => {
-    document.getElementById('proxy-a4').classList.remove('active');
-    document.getElementById('proxy-a3').classList.remove('active');
-    document.getElementById(id).classList.add('active');
-    proxyPaperSize = id === 'proxy-a4' ? 'a4' : 'a3';
-    updateProxySummary();
-  });
-});
-
-['proxy-gap-none','proxy-gap-2','proxy-gap-5'].forEach(id => {
-  document.getElementById(id).addEventListener('click', () => {
-    ['proxy-gap-none','proxy-gap-2','proxy-gap-5'].forEach(x => document.getElementById(x).classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    proxyGap = id === 'proxy-gap-none' ? 0 : id === 'proxy-gap-2' ? 2 : 5;
-    updateProxySummary();
-  });
-});
-
-document.getElementById('proxy-qty-toggle').addEventListener('click', () => {
-  proxyUseQty = !proxyUseQty;
-  document.getElementById('proxy-qty-toggle').classList.toggle('active', proxyUseQty);
-  const pip = document.getElementById('proxy-qty-toggle').querySelector('.option-pip');
-  if (proxyUseQty) {
-    pip.style.background = '#C6B6DD';
-    pip.style.borderColor = '#F1EDF7';
-    pip.style.boxShadow = '0 0 6px rgba(198,182,221,0.6)';
-  } else {
-    pip.style.background = 'rgba(156,140,185,0.25)';
-    pip.style.borderColor = 'rgba(156,140,185,0.3)';
-    pip.style.boxShadow = '';
-  }
-  updateProxySummary();
-});
-
-// Open modal
-document.getElementById('proxy-btn').addEventListener('click', () => {
-  updateProxySummary();
-  document.getElementById('proxy-modal').classList.add('active');
-});
-
-document.getElementById('proxy-modal-close').addEventListener('click', () => {
-  document.getElementById('proxy-modal').classList.remove('active');
-});
-
-document.getElementById('proxy-modal').addEventListener('click', e => {
-  if (e.target.id === 'proxy-modal') document.getElementById('proxy-modal').classList.remove('active');
-});
-
-// Generate PDF
-document.getElementById('proxy-generate-btn').addEventListener('click', async () => {
-  const btn = document.getElementById('proxy-generate-btn');
-  btn.disabled = true;
-  btn.innerHTML = '⎙ &nbsp; Generating…';
-
-  try {
-    const { jsPDF } = window.jspdf;
-    const paper = PAPER[proxyPaperSize];
-    const layout = proxyLayout(paper, proxyGap);
-
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: proxyPaperSize
-    });
-
-    // Build ordered card list with quantities
-    const allCards = [...(visualDeckData.main || []), ...(visualDeckData.sideboard || [])];
-    const cardList = [];
-    allCards.forEach(card => {
-      const copies = proxyUseQty ? (card.quantity || 1) : 1;
-      for (let i = 0; i < copies; i++) cardList.push(card);
-    });
-
-    if (cardList.length === 0) {
-      alert('No cards to print.');
-      btn.disabled = false;
-      btn.innerHTML = '⎙ &nbsp; Generate PDF';
-      return;
-    }
-
-    let cardIndex = 0;
-    let pageNum = 0;
-
-    while (cardIndex < cardList.length) {
-      if (pageNum > 0) doc.addPage(proxyPaperSize, 'portrait');
-      pageNum++;
-
-      for (let slot = 0; slot < layout.perPage && cardIndex < cardList.length; slot++, cardIndex++) {
-        const col = slot % layout.cols;
-        const row = Math.floor(slot / layout.cols);
-
-        const x = layout.offX + col * (CARD_W + proxyGap);
-        const y = layout.offY + row * (CARD_H + proxyGap);
-
-        const card = cardList[cardIndex];
-
-        // Convert blob to data URL
-        const dataUrl = await blobToDataUrl(card.blob);
-
-        // Detect format
-        const fmt = card.filename && card.filename.endsWith('.png') ? 'PNG' : 'JPEG';
-        doc.addImage(dataUrl, fmt, x, y, CARD_W, CARD_H);
-      }
-    }
-
-    // Add subtle cut lines if gap > 0
-    if (proxyGap > 0) {
-      const totalPages = pageNum;
-      for (let p = 1; p <= totalPages; p++) {
-        doc.setPage(p);
-        doc.setDrawColor(180, 160, 210);
-        doc.setLineWidth(0.15);
-        doc.setLineDashPattern([0.8, 1.2], 0);
-
-        // Vertical cut lines
-        for (let c = 1; c < layout.cols; c++) {
-          const lineX = layout.offX + c * (CARD_W + proxyGap) - proxyGap / 2;
-          doc.line(lineX, layout.offY - 3, lineX, layout.offY + layout.rows * (CARD_H + proxyGap) - proxyGap + 3);
-        }
-        // Horizontal cut lines
-        for (let r = 1; r < layout.rows; r++) {
-          const lineY = layout.offY + r * (CARD_H + proxyGap) - proxyGap / 2;
-          doc.line(layout.offX - 3, lineY, layout.offX + layout.cols * (CARD_W + proxyGap) - proxyGap + 3, lineY);
-        }
-        doc.setLineDashPattern([], 0);
-      }
-    }
-
-    const filename = `proxy-${proxyPaperSize}-${proxyGap}mm-${Date.now()}.pdf`;
-    doc.save(filename);
-
-    document.getElementById('proxy-modal').classList.remove('active');
-  } catch (err) {
-    console.error('[Proxy PDF]', err);
-    alert('PDF generation failed: ' + err.message);
-  }
-
-  btn.disabled = false;
-  btn.innerHTML = '⎙ &nbsp; Generate PDF';
-});
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(new Error('Failed to read blob'));
-    reader.readAsDataURL(blob);
-  });
-}
-
 </script>
 
 </body>
