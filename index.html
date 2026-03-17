@@ -3,11 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io https:; connect-src 'self' https:; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io https:; connect-src 'self' https:; worker-src blob:; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --imperial:  #2A123F;
@@ -800,9 +803,10 @@
   </div>
 
   <div class="results-actions" id="results-actions" style="display:none;">
-    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 28px;">
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 28px;">
       <button class="btn-action active" id="btn-individual">⊞ &nbsp; Individual Cards</button>
       <button class="btn-action" id="btn-visual">⬚ &nbsp; Visual Decklist</button>
+      <button class="btn-action" id="btn-proxy">⎙ &nbsp; Print for Proxy</button>
     </div>
   </div>
 
@@ -818,6 +822,56 @@
           Transparent Background
         </button>
         <button class="btn-zip" id="download-visual-btn" disabled>⬇ Download Image</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-proxy" style="display:none; margin-top: 20px;">
+    <div class="float-card">
+      <div class="card-label">Print Settings</div>
+      <div style="display: flex; flex-direction: column; gap: 20px;">
+
+        <div>
+          <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); margin-bottom: 10px; font-family: 'Jost', sans-serif;">Page Size</div>
+          <div class="toggle-group" id="proxy-size-options">
+            <button class="toggle active" data-proxy-size="a4">A4 &nbsp;<span style="opacity:0.5; font-size:10px;">210 × 297 mm</span></button>
+            <button class="toggle" data-proxy-size="a3">A3 &nbsp;<span style="opacity:0.5; font-size:10px;">297 × 420 mm</span></button>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); margin-bottom: 10px; font-family: 'Jost', sans-serif;">Card Spacing</div>
+          <div class="toggle-group" id="proxy-gap-options">
+            <button class="toggle active" data-proxy-gap="0">No Spacing</button>
+            <button class="toggle" data-proxy-gap="2">2 mm Gap</button>
+            <button class="toggle" data-proxy-gap="5">5 mm Gap</button>
+          </div>
+        </div>
+
+        <div class="options-row" style="margin-top: 0; padding-top: 16px;">
+          <button class="option-toggle active" id="proxy-qty-toggle">
+            <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow:0 0 6px rgba(198,182,221,0.6);"></span>
+            Repeat by Quantity
+          </button>
+          <span class="option-hint">Print each card as many times as specified in the decklist</span>
+        </div>
+
+        <div id="proxy-layout-info" style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: rgba(241,237,247,0.55); padding-top: 4px;">
+          A4 · 3 × 3 · 9 cards per page
+        </div>
+
+        <div class="btn-fetch-wrap" style="margin-top: 4px;">
+          <button class="btn-fetch" id="proxy-generate-btn">⎙ &nbsp; Generate PDF</button>
+        </div>
+
+        <div id="proxy-progress-section" style="display:none;">
+          <div class="prog-row">
+            <span id="proxy-progress-phase" style="letter-spacing:.25em;text-transform:uppercase;">Building PDF</span>
+            <span id="proxy-progress-count">0 / 0</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" id="proxy-progress-bar"></div></div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -847,6 +901,52 @@
       <div id="card-grid"></div>
       <div class="stats-row" id="stats-bar" style="display:none;">
         <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+        <button class="btn-zip" id="proxy-btn" disabled style="background: rgba(72,31,111,0.5); border-color: rgba(156,140,185,0.4); color: var(--orchid);">⎙ Print for Proxy</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Proxy Print Settings Modal -->
+  <div class="modal" id="proxy-modal">
+    <div class="modal-content" style="max-width: 420px;">
+      <button class="modal-close" id="proxy-modal-close">×</button>
+      <h3>Print for Proxy</h3>
+      <div class="version">PDF SETTINGS</div>
+
+      <div class="modal-section">
+        <h4>Paper Size</h4>
+        <div class="toggle-group">
+          <button class="toggle active" id="proxy-a4">A4 &nbsp;<span style="opacity:0.5;font-size:9px;">210×297mm · 9 cards/page</span></button>
+          <button class="toggle" id="proxy-a3">A3 &nbsp;<span style="opacity:0.5;font-size:9px;">297×420mm · 16 cards/page</span></button>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h4>Card Spacing</h4>
+        <div class="toggle-group">
+          <button class="toggle active" id="proxy-gap-none">No Gap &nbsp;<span style="opacity:0.5;font-size:9px;">cards edge to edge</span></button>
+          <button class="toggle" id="proxy-gap-2">2mm Gap &nbsp;<span style="opacity:0.5;font-size:9px;">cut guides</span></button>
+          <button class="toggle" id="proxy-gap-5">5mm Gap &nbsp;<span style="opacity:0.5;font-size:9px;">easy cutting</span></button>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h4>Quantity</h4>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+          <button class="option-toggle active" id="proxy-qty-toggle">
+            <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow: 0 0 6px rgba(198,182,221,0.6);"></span>
+            Respect deck quantities
+          </button>
+          <span class="option-hint">Print multiple copies per card</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 8px; padding: 12px 14px; background: rgba(20,8,35,0.4); border-radius: 8px; border: 1px solid rgba(156,140,185,0.1);">
+        <div id="proxy-summary" style="font-size: 12px; color: rgba(241,237,247,0.6); line-height: 1.8; font-family: 'Cormorant Garamond', serif; font-style: italic;"></div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <button class="btn-fetch" id="proxy-generate-btn" style="font-size: 13px; padding: 14px;">⎙ &nbsp; Generate PDF</button>
       </div>
     </div>
   </div>
@@ -950,20 +1050,16 @@ document.getElementById('firstprint-toggle').addEventListener('click',()=>{
   document.getElementById('firstprint-toggle').classList.toggle('active',firstPrint);
 });
 
-// Action button switching (Visual / Individual)
-document.getElementById('btn-visual').addEventListener('click', () => {
-  document.getElementById('btn-visual').classList.add('active');
-  document.getElementById('btn-individual').classList.remove('active');
-  document.getElementById('tab-visual').style.display = 'block';
-  document.getElementById('tab-individual').style.display = 'none';
-});
-
-document.getElementById('btn-individual').addEventListener('click', () => {
-  document.getElementById('btn-individual').classList.add('active');
-  document.getElementById('btn-visual').classList.remove('active');
-  document.getElementById('tab-individual').style.display = 'block';
-  document.getElementById('tab-visual').style.display = 'none';
-});
+// Action button switching (Visual / Individual / Proxy)
+function switchTab(active) {
+  ['individual','visual','proxy'].forEach(id => {
+    document.getElementById(`btn-${id}`).classList.toggle('active', id === active);
+    document.getElementById(`tab-${id}`).style.display = id === active ? 'block' : 'none';
+  });
+}
+document.getElementById('btn-visual').addEventListener('click', () => switchTab('visual'));
+document.getElementById('btn-individual').addEventListener('click', () => switchTab('individual'));
+document.getElementById('btn-proxy').addEventListener('click', () => { switchTab('proxy'); updateProxyLayoutInfo(); });
 
 
 
@@ -1455,8 +1551,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('results-actions').style.display='block';
   document.getElementById('tab-individual').style.display='block';
   document.getElementById('tab-visual').style.display='none';
+  document.getElementById('tab-proxy').style.display='none';
   document.getElementById('btn-individual').classList.add('active');
   document.getElementById('btn-visual').classList.remove('active');
+  document.getElementById('btn-proxy').classList.remove('active');
   
   showPhaseSummary(paperOnly || firstPrint);
   updatePhaseBadge('metadata', 'inactive', 0);
@@ -1472,6 +1570,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
+  document.getElementById('proxy-btn').disabled=true;
   setProgress(0,allEntries.length);
   
   let ok=0,err=0;
@@ -1628,6 +1727,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(allEntries.length,allEntries.length);
   document.getElementById('stats-bar').style.display='flex';
   document.getElementById('dl-btn').disabled=ok===0;
+  document.getElementById('proxy-btn').disabled=ok===0;
   
   if(ok > 0) {
     sortCards(visualDeckData.main);
@@ -1858,13 +1958,160 @@ document.getElementById('download-visual-btn').addEventListener('click', () => {
   }, 'image/png');
 });
 
-document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
-  const btn = document.getElementById('transparent-bg-toggle');
-  btn.classList.toggle('active');
-  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    generateVisualPreview();
-  }
+// ── Print for Proxy ──────────────────────────────────────────────────────────
+
+let proxySize = 'a4';
+let proxyGap = 0;
+let proxyUseQty = true;
+
+// Page dimensions in mm
+const PROXY_PAGE_SIZES = {
+  a4: { w: 210, h: 297, label: 'A4' },
+  a3: { w: 297, h: 420, label: 'A3' }
+};
+const CARD_W_MM = 63;
+const CARD_H_MM = 88;
+const PAGE_MARGIN_MM = 8;
+
+function proxyCalcLayout(sizeKey, gapMm) {
+  const page = PROXY_PAGE_SIZES[sizeKey];
+  const usableW = page.w - PAGE_MARGIN_MM * 2;
+  const usableH = page.h - PAGE_MARGIN_MM * 2;
+  const cols = Math.floor((usableW + gapMm) / (CARD_W_MM + gapMm));
+  const rows = Math.floor((usableH + gapMm) / (CARD_H_MM + gapMm));
+  return { cols, rows, perPage: cols * rows, page };
+}
+
+function updateProxyLayoutInfo() {
+  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+  const totalCards = proxyUseQty
+    ? [...visualDeckData.main, ...visualDeckData.sideboard].reduce((s, c) => s + (c.quantity || 1), 0)
+    : [...visualDeckData.main, ...visualDeckData.sideboard].length;
+  const pages = perPage > 0 ? Math.ceil(totalCards / perPage) : '?';
+  const gapText = proxyGap === 0 ? 'no spacing' : `${proxyGap} mm gap`;
+  document.getElementById('proxy-layout-info').textContent =
+    `${page.label} · ${cols} × ${rows} · ${perPage} cards per page · ${totalCards} cards · ${pages} page${pages !== 1 ? 's' : ''} · ${gapText}`;
+}
+
+document.getElementById('proxy-size-options').addEventListener('click', e => {
+  const b = e.target.closest('.toggle');
+  if (!b) return;
+  document.querySelectorAll('#proxy-size-options .toggle').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  proxySize = b.dataset.proxySize;
+  updateProxyLayoutInfo();
 });
+
+document.getElementById('proxy-gap-options').addEventListener('click', e => {
+  const b = e.target.closest('.toggle');
+  if (!b) return;
+  document.querySelectorAll('#proxy-gap-options .toggle').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  proxyGap = parseFloat(b.dataset.proxyGap);
+  updateProxyLayoutInfo();
+});
+
+document.getElementById('proxy-qty-toggle').addEventListener('click', () => {
+  proxyUseQty = !proxyUseQty;
+  document.getElementById('proxy-qty-toggle').classList.toggle('active', proxyUseQty);
+  updateProxyLayoutInfo();
+});
+
+// Blob → base64 dataURL
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+document.getElementById('proxy-generate-btn').addEventListener('click', async () => {
+  const allSections = [...visualDeckData.main, ...visualDeckData.sideboard];
+  if (allSections.length === 0) return;
+
+  const btn = document.getElementById('proxy-generate-btn');
+  btn.disabled = true;
+  btn.innerHTML = '⎙ &nbsp; Generating…';
+
+  const progSection = document.getElementById('proxy-progress-section');
+  const progBar = document.getElementById('proxy-progress-bar');
+  const progPhase = document.getElementById('proxy-progress-phase');
+  const progCount = document.getElementById('proxy-progress-count');
+  progSection.style.display = 'block';
+  progBar.style.width = '0%';
+  progPhase.textContent = 'Building PDF';
+
+  // Build flat card list respecting quantity if enabled
+  const cardList = [];
+  for (const card of allSections) {
+    const copies = proxyUseQty ? (card.quantity || 1) : 1;
+    for (let i = 0; i < copies; i++) {
+      cardList.push(card);
+    }
+  }
+
+  const { jsPDF } = window.jspdf;
+  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+
+  // mm → points conversion (jsPDF uses mm natively with 'mm' unit)
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: proxySize === 'a4' ? 'a4' : 'a3'
+  });
+
+  const total = cardList.length;
+  let processed = 0;
+
+  for (let i = 0; i < cardList.length; i++) {
+    const pageIndex = Math.floor(i / perPage);
+    const posInPage = i % perPage;
+
+    // New page for every page after the first
+    if (posInPage === 0 && i > 0) {
+      doc.addPage(proxySize === 'a4' ? 'a4' : 'a3', 'portrait');
+    }
+
+    const col = posInPage % cols;
+    const row = Math.floor(posInPage / cols);
+
+    // Center the grid on the page
+    const gridW = cols * CARD_W_MM + (cols - 1) * proxyGap;
+    const gridH = rows * CARD_H_MM + (rows - 1) * proxyGap;
+    const startX = (page.w - gridW) / 2;
+    const startY = (page.h - gridH) / 2;
+
+    const x = startX + col * (CARD_W_MM + proxyGap);
+    const y = startY + row * (CARD_H_MM + proxyGap);
+
+    try {
+      const dataUrl = await blobToDataURL(cardList[i].blob);
+      const fmt = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(dataUrl, fmt, x, y, CARD_W_MM, CARD_H_MM);
+    } catch (e) {
+      console.warn(`[Proxy] Failed to add image for ${cardList[i].name}:`, e);
+    }
+
+    processed++;
+    const pct = Math.round((processed / total) * 100);
+    progBar.style.width = pct + '%';
+    progCount.textContent = `${processed} / ${total}`;
+
+    // Yield to browser every 5 cards to keep UI responsive
+    if (processed % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  progPhase.textContent = 'Saving…';
+  doc.save(`proxy-${proxySize}-${Date.now()}.pdf`);
+
+  progSection.style.display = 'none';
+  progBar.style.width = '0%';
+  btn.disabled = false;
+  btn.innerHTML = '⎙ &nbsp; Generate PDF';
+});
+
 </script>
 
 <!-- Info Button -->
@@ -1984,6 +2231,204 @@ window.addEventListener('scroll', () => {
 infoBtn.addEventListener('mouseenter', () => {
   infoBtn.classList.remove('hidden');
 });
+
+// ── Proxy Print ──────────────────────────────────────────────────────────────
+
+let proxyPaperSize = 'a4';   // 'a4' | 'a3'
+let proxyGap = 0;             // 0 | 2 | 5  (mm)
+let proxyUseQty = true;
+
+// Paper configs (all in mm)
+const PAPER = {
+  a4: { w: 210, h: 297 },
+  a3: { w: 297, h: 420 }
+};
+const CARD_W = 63, CARD_H = 88;
+
+function proxyLayout(paper, gap) {
+  const cols = Math.floor((paper.w + gap) / (CARD_W + gap));
+  const rows = Math.floor((paper.h + gap) / (CARD_H + gap));
+  const gridW = cols * CARD_W + (cols - 1) * gap;
+  const gridH = rows * CARD_H + (rows - 1) * gap;
+  const offX = (paper.w - gridW) / 2;
+  const offY = (paper.h - gridH) / 2;
+  return { cols, rows, perPage: cols * rows, offX, offY };
+}
+
+function updateProxySummary() {
+  const paper = PAPER[proxyPaperSize];
+  const layout = proxyLayout(paper, proxyGap);
+
+  // Build card list respecting quantities
+  let totalCards = 0;
+  if (proxyUseQty) {
+    const allCards = [...(visualDeckData.main || []), ...(visualDeckData.sideboard || [])];
+    allCards.forEach(c => { totalCards += (c.quantity || 1); });
+  } else {
+    totalCards = fetchedImages.length;
+  }
+
+  const pages = totalCards > 0 ? Math.ceil(totalCards / layout.perPage) : '—';
+  const gapLabel = proxyGap === 0 ? 'no gap' : `${proxyGap}mm gap`;
+  const sizeLabel = proxyPaperSize.toUpperCase();
+
+  document.getElementById('proxy-summary').innerHTML =
+    `${sizeLabel} · ${layout.cols}×${layout.rows} cards per page · ${gapLabel}<br>` +
+    `${totalCards} card${totalCards !== 1 ? 's' : ''} → <strong style="color:#F1EDF7">${pages} page${pages !== 1 ? 's' : ''}</strong>`;
+}
+
+// Toggle handlers
+['proxy-a4','proxy-a3'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    document.getElementById('proxy-a4').classList.remove('active');
+    document.getElementById('proxy-a3').classList.remove('active');
+    document.getElementById(id).classList.add('active');
+    proxyPaperSize = id === 'proxy-a4' ? 'a4' : 'a3';
+    updateProxySummary();
+  });
+});
+
+['proxy-gap-none','proxy-gap-2','proxy-gap-5'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    ['proxy-gap-none','proxy-gap-2','proxy-gap-5'].forEach(x => document.getElementById(x).classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    proxyGap = id === 'proxy-gap-none' ? 0 : id === 'proxy-gap-2' ? 2 : 5;
+    updateProxySummary();
+  });
+});
+
+document.getElementById('proxy-qty-toggle').addEventListener('click', () => {
+  proxyUseQty = !proxyUseQty;
+  document.getElementById('proxy-qty-toggle').classList.toggle('active', proxyUseQty);
+  const pip = document.getElementById('proxy-qty-toggle').querySelector('.option-pip');
+  if (proxyUseQty) {
+    pip.style.background = '#C6B6DD';
+    pip.style.borderColor = '#F1EDF7';
+    pip.style.boxShadow = '0 0 6px rgba(198,182,221,0.6)';
+  } else {
+    pip.style.background = 'rgba(156,140,185,0.25)';
+    pip.style.borderColor = 'rgba(156,140,185,0.3)';
+    pip.style.boxShadow = '';
+  }
+  updateProxySummary();
+});
+
+// Open modal
+document.getElementById('proxy-btn').addEventListener('click', () => {
+  updateProxySummary();
+  document.getElementById('proxy-modal').classList.add('active');
+});
+
+document.getElementById('proxy-modal-close').addEventListener('click', () => {
+  document.getElementById('proxy-modal').classList.remove('active');
+});
+
+document.getElementById('proxy-modal').addEventListener('click', e => {
+  if (e.target.id === 'proxy-modal') document.getElementById('proxy-modal').classList.remove('active');
+});
+
+// Generate PDF
+document.getElementById('proxy-generate-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('proxy-generate-btn');
+  btn.disabled = true;
+  btn.innerHTML = '⎙ &nbsp; Generating…';
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const paper = PAPER[proxyPaperSize];
+    const layout = proxyLayout(paper, proxyGap);
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: proxyPaperSize
+    });
+
+    // Build ordered card list with quantities
+    const allCards = [...(visualDeckData.main || []), ...(visualDeckData.sideboard || [])];
+    const cardList = [];
+    allCards.forEach(card => {
+      const copies = proxyUseQty ? (card.quantity || 1) : 1;
+      for (let i = 0; i < copies; i++) cardList.push(card);
+    });
+
+    if (cardList.length === 0) {
+      alert('No cards to print.');
+      btn.disabled = false;
+      btn.innerHTML = '⎙ &nbsp; Generate PDF';
+      return;
+    }
+
+    let cardIndex = 0;
+    let pageNum = 0;
+
+    while (cardIndex < cardList.length) {
+      if (pageNum > 0) doc.addPage(proxyPaperSize, 'portrait');
+      pageNum++;
+
+      for (let slot = 0; slot < layout.perPage && cardIndex < cardList.length; slot++, cardIndex++) {
+        const col = slot % layout.cols;
+        const row = Math.floor(slot / layout.cols);
+
+        const x = layout.offX + col * (CARD_W + proxyGap);
+        const y = layout.offY + row * (CARD_H + proxyGap);
+
+        const card = cardList[cardIndex];
+
+        // Convert blob to data URL
+        const dataUrl = await blobToDataUrl(card.blob);
+
+        // Detect format
+        const fmt = card.filename && card.filename.endsWith('.png') ? 'PNG' : 'JPEG';
+        doc.addImage(dataUrl, fmt, x, y, CARD_W, CARD_H);
+      }
+    }
+
+    // Add subtle cut lines if gap > 0
+    if (proxyGap > 0) {
+      const totalPages = pageNum;
+      for (let p = 1; p <= totalPages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(180, 160, 210);
+        doc.setLineWidth(0.15);
+        doc.setLineDashPattern([0.8, 1.2], 0);
+
+        // Vertical cut lines
+        for (let c = 1; c < layout.cols; c++) {
+          const lineX = layout.offX + c * (CARD_W + proxyGap) - proxyGap / 2;
+          doc.line(lineX, layout.offY - 3, lineX, layout.offY + layout.rows * (CARD_H + proxyGap) - proxyGap + 3);
+        }
+        // Horizontal cut lines
+        for (let r = 1; r < layout.rows; r++) {
+          const lineY = layout.offY + r * (CARD_H + proxyGap) - proxyGap / 2;
+          doc.line(layout.offX - 3, lineY, layout.offX + layout.cols * (CARD_W + proxyGap) - proxyGap + 3, lineY);
+        }
+        doc.setLineDashPattern([], 0);
+      }
+    }
+
+    const filename = `proxy-${proxyPaperSize}-${proxyGap}mm-${Date.now()}.pdf`;
+    doc.save(filename);
+
+    document.getElementById('proxy-modal').classList.remove('active');
+  } catch (err) {
+    console.error('[Proxy PDF]', err);
+    alert('PDF generation failed: ' + err.message);
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '⎙ &nbsp; Generate PDF';
+});
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 </script>
 
 </body>
