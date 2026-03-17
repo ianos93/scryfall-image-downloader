@@ -848,16 +848,35 @@
           </div>
         </div>
 
-        <div class="options-row" style="margin-top: 0; padding-top: 16px;">
+        <div class="options-row" style="margin-top: 0; padding-top: 16px; flex-wrap: wrap; gap: 10px;">
           <button class="option-toggle active" id="proxy-qty-toggle">
             <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow:0 0 6px rgba(198,182,221,0.6);"></span>
             Repeat by Quantity
           </button>
           <span class="option-hint">Print each card as many times as specified in the decklist</span>
+          <button class="option-toggle" id="proxy-nobasics-toggle" style="margin-left: 8px;">
+            <span class="option-pip"></span>
+            Ignore Basic Lands
+          </button>
+          <span class="option-hint">Skip Plains, Island, Swamp, Mountain, Forest &amp; Wastes</span>
         </div>
 
         <div id="proxy-layout-info" style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: rgba(241,237,247,0.55); padding-top: 4px;">
           A4 · 3 × 3 · 9 cards per page
+        </div>
+
+        <!-- Page preview -->
+        <div>
+          <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); margin-bottom: 10px; font-family: 'Jost', sans-serif;">Page Preview</div>
+          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; display: flex; align-items: flex-start; gap: 16px; overflow-x: auto;">
+            <!-- Page 1 canvas -->
+            <div style="flex-shrink: 0; text-align: center;">
+              <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 280px; width: 100%; height: auto;"></canvas>
+              <div style="margin-top: 8px; font-size: 10px; letter-spacing: 0.15em; color: rgba(198,182,221,0.5); text-transform: uppercase; font-family: 'Jost', sans-serif;">Page 1</div>
+            </div>
+            <!-- Overflow indicator -->
+            <div id="proxy-preview-more" style="display:none; flex-shrink:0; align-self:center; font-family:'Cormorant Garamond',serif; font-style:italic; font-size:15px; color:rgba(198,182,221,0.5); white-space: nowrap;"></div>
+          </div>
         </div>
 
         <div class="btn-fetch-wrap" style="margin-top: 4px;">
@@ -901,52 +920,6 @@
       <div id="card-grid"></div>
       <div class="stats-row" id="stats-bar" style="display:none;">
         <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
-        <button class="btn-zip" id="proxy-btn" disabled style="background: rgba(72,31,111,0.5); border-color: rgba(156,140,185,0.4); color: var(--orchid);">⎙ Print for Proxy</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Proxy Print Settings Modal -->
-  <div class="modal" id="proxy-modal">
-    <div class="modal-content" style="max-width: 420px;">
-      <button class="modal-close" id="proxy-modal-close">×</button>
-      <h3>Print for Proxy</h3>
-      <div class="version">PDF SETTINGS</div>
-
-      <div class="modal-section">
-        <h4>Paper Size</h4>
-        <div class="toggle-group">
-          <button class="toggle active" id="proxy-a4">A4 &nbsp;<span style="opacity:0.5;font-size:9px;">210×297mm · 9 cards/page</span></button>
-          <button class="toggle" id="proxy-a3">A3 &nbsp;<span style="opacity:0.5;font-size:9px;">297×420mm · 16 cards/page</span></button>
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <h4>Card Spacing</h4>
-        <div class="toggle-group">
-          <button class="toggle active" id="proxy-gap-none">No Gap &nbsp;<span style="opacity:0.5;font-size:9px;">cards edge to edge</span></button>
-          <button class="toggle" id="proxy-gap-2">2mm Gap &nbsp;<span style="opacity:0.5;font-size:9px;">cut guides</span></button>
-          <button class="toggle" id="proxy-gap-5">5mm Gap &nbsp;<span style="opacity:0.5;font-size:9px;">easy cutting</span></button>
-        </div>
-      </div>
-
-      <div class="modal-section">
-        <h4>Quantity</h4>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
-          <button class="option-toggle active" id="proxy-qty-toggle">
-            <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow: 0 0 6px rgba(198,182,221,0.6);"></span>
-            Respect deck quantities
-          </button>
-          <span class="option-hint">Print multiple copies per card</span>
-        </div>
-      </div>
-
-      <div style="margin-top: 8px; padding: 12px 14px; background: rgba(20,8,35,0.4); border-radius: 8px; border: 1px solid rgba(156,140,185,0.1);">
-        <div id="proxy-summary" style="font-size: 12px; color: rgba(241,237,247,0.6); line-height: 1.8; font-family: 'Cormorant Garamond', serif; font-style: italic;"></div>
-      </div>
-
-      <div style="margin-top: 20px;">
-        <button class="btn-fetch" id="proxy-generate-btn" style="font-size: 13px; padding: 14px;">⎙ &nbsp; Generate PDF</button>
       </div>
     </div>
   </div>
@@ -1963,6 +1936,9 @@ document.getElementById('download-visual-btn').addEventListener('click', () => {
 let proxySize = 'a4';
 let proxyGap = 0;
 let proxyUseQty = true;
+let proxyNoBasics = false;
+
+const BASIC_LAND_NAMES = new Set(['plains','island','swamp','mountain','forest','wastes','snow-covered plains','snow-covered island','snow-covered swamp','snow-covered mountain','snow-covered forest']);
 
 // Page dimensions in mm
 const PROXY_PAGE_SIZES = {
@@ -1982,17 +1958,109 @@ function proxyCalcLayout(sizeKey, gapMm) {
   return { cols, rows, perPage: cols * rows, page };
 }
 
-function updateProxyLayoutInfo() {
-  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
-  const totalCards = proxyUseQty
-    ? [...visualDeckData.main, ...visualDeckData.sideboard].reduce((s, c) => s + (c.quantity || 1), 0)
-    : [...visualDeckData.main, ...visualDeckData.sideboard].length;
-  const pages = perPage > 0 ? Math.ceil(totalCards / perPage) : '?';
-  const gapText = proxyGap === 0 ? 'no spacing' : `${proxyGap} mm gap`;
-  document.getElementById('proxy-layout-info').textContent =
-    `${page.label} · ${cols} × ${rows} · ${perPage} cards per page · ${totalCards} cards · ${pages} page${pages !== 1 ? 's' : ''} · ${gapText}`;
+// Build the filtered + quantity-expanded flat card list
+function proxyBuildCardList() {
+  let source = [...visualDeckData.main, ...visualDeckData.sideboard];
+  if (proxyNoBasics) {
+    source = source.filter(c => !BASIC_LAND_NAMES.has((c.name || '').toLowerCase()));
+  }
+  const list = [];
+  for (const card of source) {
+    const copies = proxyUseQty ? (card.quantity || 1) : 1;
+    for (let i = 0; i < copies; i++) list.push(card);
+  }
+  return list;
 }
 
+function updateProxyLayoutInfo() {
+  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+  const cardList = proxyBuildCardList();
+  const total = cardList.length;
+  const pages = perPage > 0 ? Math.ceil(total / perPage) : '?';
+  const gapText = proxyGap === 0 ? 'no spacing' : `${proxyGap} mm gap`;
+  document.getElementById('proxy-layout-info').textContent =
+    `${page.label} · ${cols} × ${rows} · ${perPage} cards per page · ${total} cards · ${pages} page${pages !== 1 ? 's' : ''} · ${gapText}`;
+  renderProxyPreview(cardList);
+}
+
+// ── Preview canvas ────────────────────────────────────────────────────────────
+async function renderProxyPreview(cardList) {
+  const canvas = document.getElementById('proxy-preview-canvas');
+  const moreEl = document.getElementById('proxy-preview-more');
+  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+
+  // Preview render at 2px per mm
+  const SCALE = 2;
+  const cw = page.w * SCALE;
+  const ch = page.h * SCALE;
+  canvas.width = cw;
+  canvas.height = ch;
+
+  const ctx = canvas.getContext('2d');
+
+  // Page background
+  ctx.fillStyle = '#f5f0f5';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Subtle page edge shadow
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
+
+  const cardW = CARD_W_MM * SCALE;
+  const cardH = CARD_H_MM * SCALE;
+  const gap = proxyGap * SCALE;
+  const gridW = cols * cardW + (cols - 1) * gap;
+  const gridH = rows * cardH + (rows - 1) * gap;
+  const startX = (cw - gridW) / 2;
+  const startY = (ch - gridH) / 2;
+
+  const pageCards = cardList.slice(0, perPage);
+
+  for (let i = 0; i < rows * cols; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = startX + col * (cardW + gap);
+    const y = startY + row * (cardH + gap);
+
+    if (i < pageCards.length) {
+      try {
+        const img = await loadImage(pageCards[i].blob);
+        ctx.drawImage(img, x, y, cardW, cardH);
+        // Subtle card border
+        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, cardW, cardH);
+      } catch {
+        drawEmptySlot(ctx, x, y, cardW, cardH);
+      }
+    } else {
+      // Empty slot outline
+      drawEmptySlot(ctx, x, y, cardW, cardH);
+    }
+  }
+
+  // Show overflow indicator
+  const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 0;
+  if (totalPages > 1) {
+    moreEl.style.display = 'block';
+    moreEl.textContent = `+ ${totalPages - 1} more page${totalPages - 1 !== 1 ? 's' : ''}`;
+  } else {
+    moreEl.style.display = 'none';
+  }
+}
+
+function drawEmptySlot(ctx, x, y, w, h) {
+  ctx.fillStyle = 'rgba(156,140,185,0.08)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = 'rgba(156,140,185,0.25)';
+  ctx.lineWidth = 0.5;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.setLineDash([]);
+}
+
+// Settings listeners — all call updateProxyLayoutInfo which triggers preview
 document.getElementById('proxy-size-options').addEventListener('click', e => {
   const b = e.target.closest('.toggle');
   if (!b) return;
@@ -2017,6 +2085,12 @@ document.getElementById('proxy-qty-toggle').addEventListener('click', () => {
   updateProxyLayoutInfo();
 });
 
+document.getElementById('proxy-nobasics-toggle').addEventListener('click', () => {
+  proxyNoBasics = !proxyNoBasics;
+  document.getElementById('proxy-nobasics-toggle').classList.toggle('active', proxyNoBasics);
+  updateProxyLayoutInfo();
+});
+
 // Blob → base64 dataURL
 function blobToDataURL(blob) {
   return new Promise((resolve, reject) => {
@@ -2028,8 +2102,8 @@ function blobToDataURL(blob) {
 }
 
 document.getElementById('proxy-generate-btn').addEventListener('click', async () => {
-  const allSections = [...visualDeckData.main, ...visualDeckData.sideboard];
-  if (allSections.length === 0) return;
+  const cardList = proxyBuildCardList();
+  if (cardList.length === 0) return;
 
   const btn = document.getElementById('proxy-generate-btn');
   btn.disabled = true;
@@ -2043,19 +2117,9 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   progBar.style.width = '0%';
   progPhase.textContent = 'Building PDF';
 
-  // Build flat card list respecting quantity if enabled
-  const cardList = [];
-  for (const card of allSections) {
-    const copies = proxyUseQty ? (card.quantity || 1) : 1;
-    for (let i = 0; i < copies; i++) {
-      cardList.push(card);
-    }
-  }
-
   const { jsPDF } = window.jspdf;
   const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
 
-  // mm → points conversion (jsPDF uses mm natively with 'mm' unit)
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -2066,10 +2130,8 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   let processed = 0;
 
   for (let i = 0; i < cardList.length; i++) {
-    const pageIndex = Math.floor(i / perPage);
     const posInPage = i % perPage;
 
-    // New page for every page after the first
     if (posInPage === 0 && i > 0) {
       doc.addPage(proxySize === 'a4' ? 'a4' : 'a3', 'portrait');
     }
@@ -2077,7 +2139,6 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     const col = posInPage % cols;
     const row = Math.floor(posInPage / cols);
 
-    // Center the grid on the page
     const gridW = cols * CARD_W_MM + (cols - 1) * proxyGap;
     const gridH = rows * CARD_H_MM + (rows - 1) * proxyGap;
     const startX = (page.w - gridW) / 2;
@@ -2099,7 +2160,6 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     progBar.style.width = pct + '%';
     progCount.textContent = `${processed} / ${total}`;
 
-    // Yield to browser every 5 cards to keep UI responsive
     if (processed % 5 === 0) await new Promise(r => setTimeout(r, 0));
   }
 
