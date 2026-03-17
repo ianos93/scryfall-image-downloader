@@ -871,7 +871,7 @@
           <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; display: flex; align-items: flex-start; gap: 16px; overflow-x: auto;">
             <!-- Page 1 canvas -->
             <div style="flex-shrink: 0; text-align: center;">
-              <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); max-width: 280px; width: 100%; height: auto;"></canvas>
+              <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; height: auto;"></canvas>
               <div style="margin-top: 8px; font-size: 10px; letter-spacing: 0.15em; color: rgba(198,182,221,0.5); text-transform: uppercase; font-family: 'Jost', sans-serif;">Page 1</div>
             </div>
             <!-- Overflow indicator -->
@@ -1987,33 +1987,37 @@ function updateProxyLayoutInfo() {
 async function renderProxyPreview(cardList) {
   const canvas = document.getElementById('proxy-preview-canvas');
   const moreEl = document.getElementById('proxy-preview-more');
-  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+  const { cols, rows, perPage } = proxyCalcLayout(proxySize, proxyGap);
 
-  // Preview render at 2px per mm
-  const SCALE = 2;
-  const cw = page.w * SCALE;
-  const ch = page.h * SCALE;
+  // Scale: target ~280px wide for the preview
+  const PREVIEW_PAD = 12; // px padding around grid
+  const TARGET_W = 560;   // px — will be constrained by CSS max-width
+  const cardW = Math.floor((TARGET_W - PREVIEW_PAD * 2 - (cols - 1) * (proxyGap * 2)) / cols);
+  const cardH = Math.round(cardW * (CARD_H_MM / CARD_W_MM));
+  const gap = Math.round(proxyGap * (cardW / CARD_W_MM));
+
+  const gridW = cols * cardW + (cols - 1) * gap;
+  const gridH = rows * cardH + (rows - 1) * gap;
+
+  // Canvas sized exactly to grid + padding — no wasted space
+  const cw = gridW + PREVIEW_PAD * 2;
+  const ch = gridH + PREVIEW_PAD * 2;
   canvas.width = cw;
   canvas.height = ch;
 
   const ctx = canvas.getContext('2d');
 
-  // Page background
-  ctx.fillStyle = '#f5f0f5';
+  // Page-like background with rounded feel
+  ctx.fillStyle = '#f0ecf5';
   ctx.fillRect(0, 0, cw, ch);
 
-  // Subtle page edge shadow
-  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  // Subtle border around whole preview area
+  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
   ctx.lineWidth = 1;
   ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
 
-  const cardW = CARD_W_MM * SCALE;
-  const cardH = CARD_H_MM * SCALE;
-  const gap = proxyGap * SCALE;
-  const gridW = cols * cardW + (cols - 1) * gap;
-  const gridH = rows * cardH + (rows - 1) * gap;
-  const startX = (cw - gridW) / 2;
-  const startY = (ch - gridH) / 2;
+  const startX = PREVIEW_PAD;
+  const startY = PREVIEW_PAD;
 
   const pageCards = cardList.slice(0, perPage);
 
@@ -2027,20 +2031,18 @@ async function renderProxyPreview(cardList) {
       try {
         const img = await loadImage(pageCards[i].blob);
         ctx.drawImage(img, x, y, cardW, cardH);
-        // Subtle card border
-        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
         ctx.lineWidth = 0.5;
         ctx.strokeRect(x, y, cardW, cardH);
       } catch {
         drawEmptySlot(ctx, x, y, cardW, cardH);
       }
     } else {
-      // Empty slot outline
       drawEmptySlot(ctx, x, y, cardW, cardH);
     }
   }
 
-  // Show overflow indicator
+  // Overflow indicator
   const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 0;
   if (totalPages > 1) {
     moreEl.style.display = 'block';
