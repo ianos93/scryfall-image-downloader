@@ -1217,7 +1217,18 @@ function buildUrl(entry, fuzzy=false) {
   return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
 }
 
-const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|about|commander|companion|maybeboard|maybe\s?board|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?):?$/i;
+// Section header detection — matches the cleaned line (comment markers already stripped)
+const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|side|sb|s\.b\.?|about|commander|companion|maybeboard|maybe\s?board|maybe|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?):?$/i;
+
+// Detects if a cleaned line is a sideboard header in any common format
+function isSideboardHeader(line) {
+  return /^(sideboard|side\s?board|side|sb|s\.b\.?)\s*:?\s*(\(\d+\))?$/i.test(line);
+}
+
+// Detects if a cleaned line is a main deck header
+function isMainHeader(line) {
+  return /^(deck|main\s?deck|main|commander|companion)\s*:?\s*(\(\d+\))?$/i.test(line);
+}
 
 function parseNamesWithSections(raw){
   const sections = { main: [], sideboard: [] };
@@ -1227,25 +1238,28 @@ function parseNamesWithSections(raw){
   
   const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));
   
-  lines.forEach((line, lineNum) => {
+  lines.forEach((line) => {
+      // Strip leading comment/marker characters
       const cleanLine = line.replace(/^[\/\#\*\-\s]+/, '').trim();
-      const isDeckHeader = DECK_HEADERS.test(cleanLine);
-      
-      if (isDeckHeader) {
-        const isSideboard = /sideboard|side\s?board/i.test(cleanLine);
-        const isMain = /deck|main|commander|companion/i.test(cleanLine);
-        
-        if (isSideboard) {
-          currentSection = 'sideboard';
-        } else if (isMain) {
-          currentSection = 'main';
-        }
+
+      // Check section headers before anything else
+      if (isSideboardHeader(cleanLine)) {
+        currentSection = 'sideboard';
+        return;
+      }
+      if (isMainHeader(cleanLine)) {
+        currentSection = 'main';
+        return;
+      }
+      // Also catch generic deck headers that aren't side/main (skip them)
+      if (DECK_HEADERS.test(cleanLine)) {
         return;
       }
       
       const entry = parseLine(line);
       
-      if (entry.name && DECK_HEADERS.test(entry.name)) {
+      // Skip if parsed name itself is a header keyword
+      if (entry.name && (isSideboardHeader(entry.name) || isMainHeader(entry.name) || DECK_HEADERS.test(entry.name))) {
         return;
       }
       
@@ -1269,7 +1283,8 @@ function parseNames(raw){
     .map(parseLine)
     .filter(e=>{
       const key=(e.name||'')+':'+(e.set||'')+':'+(e.number||'');
-      if(!e.name&&!e.set||DECK_HEADERS.test(e.name||'')||seen.has(key.toLowerCase()))return false;
+      const n = e.name||'';
+      if(!e.name&&!e.set||isSideboardHeader(n)||isMainHeader(n)||DECK_HEADERS.test(n)||seen.has(key.toLowerCase()))return false;
       seen.add(key.toLowerCase());
       return true;
     });
@@ -2439,13 +2454,14 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
 
 // Fetch Secret Lair / Special Guests version of a card
 async function fetchSecretLairVersion(cardName) {
-  const query = `!"${cardName}" (set_type:memorabilia or set:spg)`;
+  // Search specifically across known Secret Lair and Special Guests set codes
+  const query = `!"${cardName}" (set:slc or set:slu or set:sld or set:slp or set:spg)`;
   const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=released&dir=desc&unique=prints`;
   const res = await fetch(url, { headers: { 'User-Agent': 'ScryfallImageDownloader/3.0' } });
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
-  // Prefer Special Guests (spg), then most recent Secret Lair
+  // Prefer Special Guests (spg), then most recent Secret Lair drop
   const spg = data.data.find(c => c.set === 'spg');
   return spg || data.data[0];
 }
