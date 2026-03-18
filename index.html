@@ -2002,8 +2002,10 @@ async function renderProxyPreview(cardList) {
   proxyPreviewPages = [];
   proxyPreviewCurrentPage = 0;
 
-  const PREVIEW_PAD = 12;
-  const TARGET_W = 560;
+  // Render at 2× the display container width, scaled further by DPR for crisp screens
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const PREVIEW_PAD = 16;
+  const TARGET_W = Math.round(1200 * DPR);  // ~1200 logical px before DPR
   const cardW = Math.floor((TARGET_W - PREVIEW_PAD * 2 - (cols - 1) * (proxyGap * 2)) / cols);
   const cardH = Math.round(cardW * (CARD_H_MM / CARD_W_MM));
   const gap   = Math.round(proxyGap * (cardW / CARD_W_MM));
