@@ -739,6 +739,31 @@
     border-color: rgba(156,140,185,0.35) !important;
     box-shadow: 0 0 0 3px rgba(150,100,220,0.1) !important;
   }
+  /* ── Secret Lair easter egg ── */
+  @keyframes slGlimmer {
+    0%   { background: #C6B6DD !important; box-shadow: 0 6px 28px rgba(198,182,221,0.25), 0 2px 8px rgba(0,0,0,0.4); }
+    20%  { background: linear-gradient(90deg,#f6c87a,#e8956d,#c97dd4,#7ab8f6) !important; box-shadow: 0 8px 40px rgba(246,200,122,0.5), 0 0 60px rgba(201,125,212,0.3); }
+    50%  { background: linear-gradient(90deg,#7ab8f6,#c97dd4,#e8956d,#f6c87a) !important; box-shadow: 0 8px 40px rgba(122,184,246,0.5), 0 0 60px rgba(232,149,109,0.3); }
+    80%  { background: linear-gradient(90deg,#c97dd4,#f6c87a,#7ab8f6,#e8956d) !important; box-shadow: 0 8px 40px rgba(201,125,212,0.5); }
+    100% { background: #C6B6DD !important; box-shadow: 0 6px 28px rgba(198,182,221,0.25), 0 2px 8px rgba(0,0,0,0.4); }
+  }
+  .sl-glimmer {
+    animation: slGlimmer 1.8s ease forwards !important;
+    color: #1a0d2e !important;
+  }
+  #secretlair-toggle {
+    transition: all 0.3s ease;
+  }
+  #secretlair-toggle.active {
+    background: rgba(40,15,5,0.7) !important;
+    border-color: rgba(255,160,60,0.7) !important;
+    box-shadow: 0 0 20px rgba(255,130,40,0.3), 0 0 40px rgba(200,100,220,0.15);
+  }
+  #secretlair-toggle.active .option-pip {
+    background: linear-gradient(135deg, #f6c87a, #e8956d) !important;
+    border-color: #f6c87a !important;
+    box-shadow: 0 0 6px rgba(246,200,122,0.8) !important;
+  }
 </style>
 </head>
 <body>
@@ -795,6 +820,11 @@
         First Print
       </button>
       <span class="option-hint">Fetch the oldest printing of each card</span>
+      <button class="option-toggle" id="secretlair-toggle" style="margin-left:8px; display:none; border-color:rgba(255,180,100,0.4); background: rgba(40,15,5,0.6);">
+        <span class="option-pip" style="background:rgba(255,160,60,0.3); border-color:rgba(255,180,100,0.5);"></span>
+        <span style="background: linear-gradient(90deg, #f6c87a, #e8956d, #c97dd4, #7ab8f6); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">Secret Lair</span>
+      </button>
+      <span class="option-hint" id="secretlair-hint" style="display:none;">Seek Secret Lair &amp; Special Guests printings</span>
     </div>
   </div>
 
@@ -1392,7 +1422,7 @@ async function fetchCardMetadata(entry) {
   let usedFallback = false;
 
   const url = buildUrl(entry);
-  const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+  const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
   const data = await res.json();
 
   if (res.ok) {
@@ -1400,19 +1430,28 @@ async function fetchCardMetadata(entry) {
   } else {
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
-      const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
       const data2 = await res2.json();
       if (res2.ok) { card = data2; }
     }
 
     if (!card && entry.name && (entry.set || entry.number)) {
-      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
       const data3 = await res3.json();
       if (!res3.ok) throw new Error(data3.details||'Not found');
       card = data3;
       usedFallback = true;
     } else if (!card) {
       throw new Error(data.details||'Not found');
+    }
+  }
+
+  // Secret Lair mode: try to find a SL/SPG version, fall back to normal if none exists
+  if (useSecretLair && card && card.name) {
+    const slCard = await fetchSecretLairVersion(card.name);
+    if (slCard) {
+      slCard._usedSecretLair = true;
+      card = slCard;
     }
   }
 
@@ -1691,7 +1730,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
       const cacheNote = card._fromCache ? ' 💾' : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
+      const slNote = card._usedSecretLair ? ' ✦ SL' : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${slNote}${cacheNote}`, card._usedSecretLair ? 'warn' : card._usedFallback ? 'warn' : 'ok');
       ok++;
     }
     
@@ -2238,6 +2278,26 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
 
 </script>
 
+<!-- Secret Lair Toast -->
+<div id="sloth-toast" style="
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: linear-gradient(135deg, rgba(40,15,5,0.97), rgba(30,10,40,0.97));
+  border: 1px solid rgba(255,160,60,0.4);
+  border-radius: 12px; padding: 14px 22px;
+  display: flex; align-items: center; gap: 14px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,180,100,0.1), 0 0 30px rgba(255,120,40,0.15);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2,0,0,1);
+  z-index: 9999; max-width: 420px; width: calc(100vw - 48px);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+">
+  <div style="font-size: 24px; flex-shrink:0; filter: drop-shadow(0 0 8px rgba(255,160,60,0.8));">🦥</div>
+  <div>
+    <div style="font-family:'Cormorant Garamond',serif; font-size:17px; color:#f6c87a; margin-bottom:3px; font-style:italic;">The Vault stirs…</div>
+    <div style="font-family:'Jost',sans-serif; font-size:11px; letter-spacing:0.1em; color:rgba(255,200,140,0.7);">Secret Lair mode unlocked. The rarest printings await.</div>
+  </div>
+</div>
+
 <!-- Info Button -->
 <button class="info-btn" id="info-btn">ⓘ</button>
 
@@ -2315,6 +2375,80 @@ const infoModal = document.getElementById('info-modal');
 infoBtn.addEventListener('click', () => {
   infoModal.classList.add('active');
 });
+
+// ── Secret Lair Easter Egg ────────────────────────────────────────────────────
+
+let secretLairActive = false;
+let slothBuffer = '';
+const SLOTH_CODE = 'sloth';
+
+function showSlothToast() {
+  const toast = document.getElementById('sloth-toast');
+  toast.style.opacity = '1';
+  toast.style.transform = 'translateX(-50%) translateY(0)';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(20px)';
+  }, 4000);
+}
+
+function activateSecretLair() {
+  if (secretLairActive) return;
+  secretLairActive = true;
+
+  // Reveal the toggle
+  const toggle = document.getElementById('secretlair-toggle');
+  const hint   = document.getElementById('secretlair-hint');
+  toggle.style.display = 'inline-flex';
+  hint.style.display   = 'inline';
+
+  // Fade toggle in smoothly
+  toggle.style.opacity = '0';
+  toggle.style.transition = 'opacity 0.6s ease 0.3s, border-color 0.3s, background 0.3s, box-shadow 0.3s';
+  requestAnimationFrame(() => requestAnimationFrame(() => { toggle.style.opacity = '1'; }));
+
+  // Glimmer the fetch button
+  const fb = document.getElementById('fetch-btn');
+  fb.classList.add('sl-glimmer');
+  setTimeout(() => fb.classList.remove('sl-glimmer'), 2000);
+
+  // Show toast
+  showSlothToast();
+}
+
+// Listen for "sloth" typed anywhere outside inputs
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+  slothBuffer += e.key.toLowerCase();
+  if (slothBuffer.length > SLOTH_CODE.length) {
+    slothBuffer = slothBuffer.slice(-SLOTH_CODE.length);
+  }
+  if (slothBuffer === SLOTH_CODE) {
+    slothBuffer = '';
+    activateSecretLair();
+  }
+});
+
+// Toggle on/off
+let useSecretLair = false;
+document.getElementById('secretlair-toggle').addEventListener('click', () => {
+  if (!secretLairActive) return;
+  useSecretLair = !useSecretLair;
+  document.getElementById('secretlair-toggle').classList.toggle('active', useSecretLair);
+});
+
+// Fetch Secret Lair / Special Guests version of a card
+async function fetchSecretLairVersion(cardName) {
+  const query = `!"${cardName}" (set_type:memorabilia or set:spg)`;
+  const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=released&dir=desc&unique=prints`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'ScryfallImageDownloader/3.0' } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.data || data.data.length === 0) return null;
+  // Prefer Special Guests (spg), then most recent Secret Lair
+  const spg = data.data.find(c => c.set === 'spg');
+  return spg || data.data[0];
+}
 
 document.getElementById('modal-close').addEventListener('click', () => {
   infoModal.classList.remove('active');
