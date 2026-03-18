@@ -848,20 +848,24 @@
           </div>
         </div>
 
-        <div class="options-row" style="margin-top: 0; padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <button class="option-toggle active" id="proxy-qty-toggle">
-            <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow:0 0 6px rgba(198,182,221,0.6);"></span>
-            Repeat by Quantity
-          </button>
-          <span class="option-hint">Print each card as many times as specified in the decklist</span>
-          <button class="option-toggle" id="proxy-nobasics-toggle" style="margin-left: 8px;">
-            <span class="option-pip"></span>
-            Ignore Basic Lands
-          </button>
-          <span class="option-hint">Skip Plains, Island, Swamp, Mountain, Forest &amp; Wastes</span>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 16px; border-top: 1px solid rgba(156,140,185,0.1);">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="option-toggle active" id="proxy-qty-toggle">
+              <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow:0 0 6px rgba(198,182,221,0.6);"></span>
+              Repeat by Quantity
+            </button>
+            <span class="option-hint">Print each card as many times as specified in the decklist</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button class="option-toggle" id="proxy-nobasics-toggle">
+              <span class="option-pip"></span>
+              Ignore Basic Lands
+            </button>
+            <span class="option-hint">Skip Plains, Island, Swamp, Mountain, Forest &amp; Wastes</span>
+          </div>
         </div>
 
-        <div id="proxy-layout-info" style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: rgba(241,237,247,0.55); padding-top: 4px;">
+        <div id="proxy-layout-info" style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: rgba(241,237,247,0.55);">
           A4 · 3 × 3 · 9 cards per page
         </div>
 
