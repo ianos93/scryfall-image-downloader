@@ -848,7 +848,7 @@
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding-top: 16px; border-top: 1px solid rgba(156,140,185,0.1);">
+        <div style="display: grid; grid-template-columns: auto auto; justify-content: start; gap: 12px 40px; padding-top: 16px; border-top: 1px solid rgba(156,140,185,0.1);">
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <button class="option-toggle active" id="proxy-qty-toggle">
               <span class="option-pip" style="background:#C6B6DD; border-color:#F1EDF7; box-shadow:0 0 6px rgba(198,182,221,0.6);"></span>
@@ -2247,7 +2247,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
     <h3>Luminary</h3>
-    <div class="version">VERSION 2.0</div>
+    <div class="version">VERSION 3.0</div>
     
     <div class="modal-section">
       <h4>Quick Instructions</h4>
@@ -2274,12 +2274,14 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     </div>
     
     <div class="modal-section">
-      <h4>What's New in v2.0</h4>
+      <h4>What's New in v3.0</h4>
       <ul>
-        <li>Improved sideboard detection (supports //Sideboard, // Sideboard, etc.)</li>
-        <li>Optimized fetch flow — up to 60% fewer API calls with Paper / First Print</li>
-        <li>Smart caching reduces redundant requests</li>
-        <li>Better performance for large decklists</li>
+        <li>Print for Proxy — generate a print-ready PDF at true card size (63×88mm)</li>
+        <li>A4 &amp; A3 support with 10mm safe margins for home and shop printers</li>
+        <li>Proxy page preview with full navigation before downloading</li>
+        <li>Repeat by Quantity and Ignore Basic Lands proxy options</li>
+        <li>Visual Decklist improvements — sideboard column with label</li>
+        <li>Smoother UI transitions and emoji-free interface</li>
       </ul>
     </div>
     
