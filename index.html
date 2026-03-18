@@ -822,9 +822,9 @@
       <span class="option-hint">Fetch the oldest printing of each card</span>
       <button class="option-toggle" id="secretlair-toggle" style="margin-left:8px; display:none; border-color:rgba(255,180,100,0.4); background: rgba(40,15,5,0.6);">
         <span class="option-pip" style="background:rgba(255,160,60,0.3); border-color:rgba(255,180,100,0.5);"></span>
-        <span style="background: linear-gradient(90deg, #f6c87a, #e8956d, #c97dd4, #7ab8f6); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">Secret Lair</span>
+        <span style="background: linear-gradient(90deg, #f6c87a, #e8956d, #c97dd4, #7ab8f6); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">Premium Prints</span>
       </button>
-      <span class="option-hint" id="secretlair-hint" style="display:none;">Seek Secret Lair &amp; Special Guests printings</span>
+      <span class="option-hint" id="secretlair-hint" style="display:none;">Showcase, Borderless, Universes Beyond &amp; Secret Lair</span>
     </div>
   </div>
 
@@ -973,9 +973,10 @@ const CACHE_EXPIRY_DAYS = 7;
 const CACHE_KEY_PREFIX = 'scryfall_cache_';
 
 // Card cache utilities
-function getCachedCard(name, set, number) {
+function getCachedCard(name, set, number, variant) {
   try {
-    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}`;
+    const v = variant || 'default';
+    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}_${v}`;
     const cached = localStorage.getItem(cacheKey);
     if (!cached) return null;
     
@@ -994,9 +995,10 @@ function getCachedCard(name, set, number) {
   }
 }
 
-function setCachedCard(name, set, number, cardData) {
+function setCachedCard(name, set, number, cardData, variant) {
   try {
-    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}`;
+    const v = variant || 'default';
+    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}_${v}`;
     const data = {
       card: cardData,
       timestamp: Date.now(),
@@ -1427,7 +1429,8 @@ function sortCards(cardList) {
 }
 
 async function fetchCardMetadata(entry) {
-  const cachedCard = getCachedCard(entry.name, entry.set, entry.number);
+  const variant = usePremium ? 'premium' : 'default';
+  const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
   if (cachedCard) {
     cachedCard._fromCache = true;
     return cachedCard;
@@ -1461,18 +1464,21 @@ async function fetchCardMetadata(entry) {
     }
   }
 
-  // Secret Lair mode: try to find a SL/SPG version, fall back to normal if none exists
-  if (useSecretLair && card && card.name) {
-    const slCard = await fetchSecretLairVersion(card.name);
-    if (slCard) {
-      slCard._usedSecretLair = true;
-      card = slCard;
+  // Premium mode: try showcase/borderless/UB/SL version, fall back silently if none
+  if (usePremium && card && card.name) {
+    const premiumCard = await fetchPremiumVersion(card.name);
+    if (premiumCard) {
+      premiumCard._usedPremium = true;
+      card = premiumCard;
     }
   }
 
   card._usedFallback = usedFallback;
   card._fromCache = false;
   card._originalEntry = entry;
+
+  // Cache under the correct variant key
+  setCachedCard(entry.name, entry.set, entry.number, card, variant);
   return card;
 }
 
@@ -1522,7 +1528,8 @@ async function applyCardOptions(card, options) {
   modifiedCard._originalEntry = card._originalEntry;
   
   if (!card._fromCache) {
-    setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard);
+    const variant = usePremium ? 'premium' : 'default';
+    setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
   }
   
   return modifiedCard;
@@ -1745,8 +1752,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       
       const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
       const cacheNote = card._fromCache ? ' 💾' : '';
-      const slNote = card._usedSecretLair ? ' ✦ SL' : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${slNote}${cacheNote}`, card._usedSecretLair ? 'warn' : card._usedFallback ? 'warn' : 'ok');
+      const premiumNote = card._usedPremium ? ' ✦ premium' : '';
+      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${cacheNote}`, card._usedPremium ? 'warn' : card._usedFallback ? 'warn' : 'ok');
       ok++;
     }
     
@@ -2309,7 +2316,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div style="font-size: 24px; flex-shrink:0; filter: drop-shadow(0 0 8px rgba(255,160,60,0.8));">🦥</div>
   <div>
     <div style="font-family:'Cormorant Garamond',serif; font-size:17px; color:#f6c87a; margin-bottom:3px; font-style:italic;">The Vault stirs…</div>
-    <div style="font-family:'Jost',sans-serif; font-size:11px; letter-spacing:0.1em; color:rgba(255,200,140,0.7);">Secret Lair mode unlocked. The rarest printings await.</div>
+    <div style="font-family:'Jost',sans-serif; font-size:11px; letter-spacing:0.1em; color:rgba(255,200,140,0.7);">Premium Prints unlocked. Showcase, Borderless, UB &amp; Secret Lair await.</div>
   </div>
 </div>
 
@@ -2444,26 +2451,32 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Toggle on/off
-let useSecretLair = false;
+// Toggle on/off — re-fetch cards if results are already loaded
+let usePremium = false;
 document.getElementById('secretlair-toggle').addEventListener('click', () => {
   if (!secretLairActive) return;
-  useSecretLair = !useSecretLair;
-  document.getElementById('secretlair-toggle').classList.toggle('active', useSecretLair);
+  usePremium = !usePremium;
+  document.getElementById('secretlair-toggle').classList.toggle('active', usePremium);
+
+  // If cards have already been fetched, re-run the fetch with new variant
+  if (fetchedImages.length > 0 && !isFetching) {
+    const ta = document.getElementById('card-input');
+    if (ta.value.trim()) {
+      document.getElementById('fetch-btn').click();
+    }
+  }
 });
 
-// Fetch Secret Lair / Special Guests version of a card
-async function fetchSecretLairVersion(cardName) {
-  // Search specifically across known Secret Lair and Special Guests set codes
-  const query = `!"${cardName}" (set:slc or set:slu or set:sld or set:slp or set:spg)`;
+// Fetch premium version: showcase / borderless / Universes Beyond / Secret Lair — latest wins on overlap
+async function fetchPremiumVersion(cardName) {
+  const query = `!"${cardName}" (is:showcase or is:borderless or is:universesbeyond or set:sld or set:slc or set:slu or set:slp or set:spg) include:extras`;
   const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=released&dir=desc&unique=prints`;
   const res = await fetch(url, { headers: { 'User-Agent': 'ScryfallImageDownloader/3.0' } });
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
-  // Prefer Special Guests (spg), then most recent Secret Lair drop
-  const spg = data.data.find(c => c.set === 'spg');
-  return spg || data.data[0];
+  // Most recent result is always first (dir=desc) — handles all overlaps naturally
+  return data.data[0];
 }
 
 document.getElementById('modal-close').addEventListener('click', () => {
