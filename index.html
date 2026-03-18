@@ -867,15 +867,16 @@
 
         <!-- Page preview -->
         <div>
-          <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); margin-bottom: 10px; font-family: 'Jost', sans-serif;">Page Preview</div>
-          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; display: flex; align-items: flex-start; gap: 16px; overflow-x: auto;">
-            <!-- Page 1 canvas -->
-            <div style="flex-shrink: 0; text-align: center;">
-              <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; height: auto;"></canvas>
-              <div style="margin-top: 8px; font-size: 10px; letter-spacing: 0.15em; color: rgba(198,182,221,0.5); text-transform: uppercase; font-family: 'Jost', sans-serif;">Page 1</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
+            <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); font-family: 'Jost', sans-serif;">Page Preview</div>
+            <div id="proxy-nav" style="display:none; align-items:center; gap: 10px;">
+              <button id="proxy-prev" style="width:28px;height:28px;border-radius:50%;background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Previous page">‹</button>
+              <span id="proxy-page-label" style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(198,182,221,0.6);font-family:'Jost',sans-serif;min-width:60px;text-align:center;">1 / 1</span>
+              <button id="proxy-next" style="width:28px;height:28px;border-radius:50%;background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Next page">›</button>
             </div>
-            <!-- Overflow indicator -->
-            <div id="proxy-preview-more" style="display:none; flex-shrink:0; align-self:center; font-family:'Cormorant Garamond',serif; font-style:italic; font-size:15px; color:rgba(198,182,221,0.5); white-space: nowrap;"></div>
+          </div>
+          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; position:relative; overflow:hidden;">
+            <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; height: auto; transition: opacity 0.2s ease;"></canvas>
           </div>
         </div>
 
@@ -1984,72 +1985,128 @@ function updateProxyLayoutInfo() {
 }
 
 // ── Preview canvas ────────────────────────────────────────────────────────────
+let proxyPreviewPages = [];  // cached rendered canvases per page
+let proxyPreviewCurrentPage = 0;
+
 async function renderProxyPreview(cardList) {
   const canvas = document.getElementById('proxy-preview-canvas');
-  const moreEl = document.getElementById('proxy-preview-more');
-  const { cols, rows, perPage } = proxyCalcLayout(proxySize, proxyGap);
+  const navEl  = document.getElementById('proxy-nav');
+  const label  = document.getElementById('proxy-page-label');
+  const prevBtn = document.getElementById('proxy-prev');
+  const nextBtn = document.getElementById('proxy-next');
 
-  // Scale: target ~280px wide for the preview
-  const PREVIEW_PAD = 12; // px padding around grid
-  const TARGET_W = 560;   // px — will be constrained by CSS max-width
+  const { cols, rows, perPage } = proxyCalcLayout(proxySize, proxyGap);
+  const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 1;
+
+  // Reset cache and page cursor
+  proxyPreviewPages = [];
+  proxyPreviewCurrentPage = 0;
+
+  const PREVIEW_PAD = 12;
+  const TARGET_W = 560;
   const cardW = Math.floor((TARGET_W - PREVIEW_PAD * 2 - (cols - 1) * (proxyGap * 2)) / cols);
   const cardH = Math.round(cardW * (CARD_H_MM / CARD_W_MM));
-  const gap = Math.round(proxyGap * (cardW / CARD_W_MM));
-
+  const gap   = Math.round(proxyGap * (cardW / CARD_W_MM));
   const gridW = cols * cardW + (cols - 1) * gap;
   const gridH = rows * cardH + (rows - 1) * gap;
+  const cw    = gridW + PREVIEW_PAD * 2;
+  const ch    = gridH + PREVIEW_PAD * 2;
 
-  // Canvas sized exactly to grid + padding — no wasted space
-  const cw = gridW + PREVIEW_PAD * 2;
-  const ch = gridH + PREVIEW_PAD * 2;
-  canvas.width = cw;
-  canvas.height = ch;
+  // Render all pages into offscreen canvases
+  for (let p = 0; p < totalPages; p++) {
+    const oc  = document.createElement('canvas');
+    oc.width  = cw;
+    oc.height = ch;
+    const ctx = oc.getContext('2d');
 
-  const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#f0ecf5';
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
 
-  // Page-like background with rounded feel
-  ctx.fillStyle = '#f0ecf5';
-  ctx.fillRect(0, 0, cw, ch);
+    const pageCards = cardList.slice(p * perPage, (p + 1) * perPage);
 
-  // Subtle border around whole preview area
-  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(0.5, 0.5, cw - 1, ch - 1);
+    for (let i = 0; i < rows * cols; i++) {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const x = PREVIEW_PAD + col * (cardW + gap);
+      const y = PREVIEW_PAD + row * (cardH + gap);
 
-  const startX = PREVIEW_PAD;
-  const startY = PREVIEW_PAD;
-
-  const pageCards = cardList.slice(0, perPage);
-
-  for (let i = 0; i < rows * cols; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const x = startX + col * (cardW + gap);
-    const y = startY + row * (cardH + gap);
-
-    if (i < pageCards.length) {
-      try {
-        const img = await loadImage(pageCards[i].blob);
-        ctx.drawImage(img, x, y, cardW, cardH);
-        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x, y, cardW, cardH);
-      } catch {
+      if (i < pageCards.length) {
+        try {
+          const img = await loadImage(pageCards[i].blob);
+          ctx.drawImage(img, x, y, cardW, cardH);
+          ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(x, y, cardW, cardH);
+        } catch {
+          drawEmptySlot(ctx, x, y, cardW, cardH);
+        }
+      } else {
         drawEmptySlot(ctx, x, y, cardW, cardH);
       }
-    } else {
-      drawEmptySlot(ctx, x, y, cardW, cardH);
     }
+
+    proxyPreviewPages.push(oc);
   }
 
-  // Overflow indicator
-  const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 0;
+  // Show/hide navigation
   if (totalPages > 1) {
-    moreEl.style.display = 'block';
-    moreEl.textContent = `+ ${totalPages - 1} more page${totalPages - 1 !== 1 ? 's' : ''}`;
+    navEl.style.display = 'flex';
   } else {
-    moreEl.style.display = 'none';
+    navEl.style.display = 'none';
   }
+
+  // Draw page helper
+  function showPage(idx) {
+    proxyPreviewCurrentPage = idx;
+    label.textContent = `${idx + 1} / ${totalPages}`;
+    prevBtn.style.opacity = idx === 0 ? '0.3' : '1';
+    prevBtn.style.pointerEvents = idx === 0 ? 'none' : 'auto';
+    nextBtn.style.opacity = idx === totalPages - 1 ? '0.3' : '1';
+    nextBtn.style.pointerEvents = idx === totalPages - 1 ? 'none' : 'auto';
+
+    // Fade out → swap → fade in
+    canvas.style.opacity = '0';
+    setTimeout(() => {
+      canvas.width  = proxyPreviewPages[idx].width;
+      canvas.height = proxyPreviewPages[idx].height;
+      canvas.getContext('2d').drawImage(proxyPreviewPages[idx], 0, 0);
+      canvas.style.opacity = '1';
+    }, 150);
+  }
+
+  // Attach nav listeners (replace old ones by cloning)
+  const newPrev = prevBtn.cloneNode(true);
+  const newNext = nextBtn.cloneNode(true);
+  prevBtn.parentNode.replaceChild(newPrev, prevBtn);
+  nextBtn.parentNode.replaceChild(newNext, nextBtn);
+
+  newPrev.addEventListener('click', () => {
+    if (proxyPreviewCurrentPage > 0) showPage(proxyPreviewCurrentPage - 1);
+  });
+  newNext.addEventListener('click', () => {
+    if (proxyPreviewCurrentPage < totalPages - 1) showPage(proxyPreviewCurrentPage + 1);
+  });
+
+  // Hover styles
+  [newPrev, newNext].forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      if (btn.style.pointerEvents !== 'none') {
+        btn.style.borderColor = 'var(--lavender)';
+        btn.style.color = 'var(--orchid)';
+        btn.style.background = 'rgba(72,31,111,0.3)';
+      }
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.borderColor = 'rgba(156,140,185,0.2)';
+      btn.style.color = 'rgba(198,182,221,0.6)';
+      btn.style.background = 'rgba(20,8,35,0.6)';
+    });
+  });
+
+  showPage(0);
 }
 
 function drawEmptySlot(ctx, x, y, w, h) {
