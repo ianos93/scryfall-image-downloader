@@ -1237,43 +1237,58 @@ function parseNamesWithSections(raw){
   const seenMain = new Set();
   const seenSideboard = new Set();
   let currentSection = 'main';
-  
-  const lines = raw.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));
-  
+  let mainHasCards = false;      // true once we've parsed at least one main deck card
+  let blankSeen = false;         // true once we've seen the first blank line after main cards
+
+  // Keep blank lines this time — we need them as separators
+  const lines = raw.split('\n').map(l=>l.trim());
+
   lines.forEach((line) => {
+      // Blank line logic: first blank after main deck cards have been seen → switch to sideboard
+      if (line === '' || line.startsWith('#')) {
+        if (line === '' && mainHasCards && currentSection === 'main' && !blankSeen) {
+          blankSeen = true;
+          currentSection = 'sideboard';
+        }
+        return;
+      }
+
       // Strip leading comment/marker characters
       const cleanLine = line.replace(/^[\/\#\*\-\s]+/, '').trim();
 
-      // Check section headers before anything else
+      // Explicit section headers always take priority
       if (isSideboardHeader(cleanLine)) {
         currentSection = 'sideboard';
+        blankSeen = true; // treat as resolved
         return;
       }
       if (isMainHeader(cleanLine)) {
         currentSection = 'main';
+        blankSeen = false;
         return;
       }
-      // Also catch generic deck headers that aren't side/main (skip them)
+      // Generic deck headers (lands, creatures, etc.) — skip line, don't change section
       if (DECK_HEADERS.test(cleanLine)) {
         return;
       }
-      
+
       const entry = parseLine(line);
-      
+
       // Skip if parsed name itself is a header keyword
       if (entry.name && (isSideboardHeader(entry.name) || isMainHeader(entry.name) || DECK_HEADERS.test(entry.name))) {
         return;
       }
-      
+
       const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
       const seen = currentSection === 'main' ? seenMain : seenSideboard;
-      
+
       if(!entry.name&&!entry.set||seen.has(key.toLowerCase())) return;
       seen.add(key.toLowerCase());
-      
+
       sections[currentSection].push(entry);
+      if (currentSection === 'main') mainHasCards = true;
     });
-  
+
   return sections;
 }
 
