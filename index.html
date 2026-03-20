@@ -1417,27 +1417,29 @@ function sortCards(cardList) {
     if (!card.type_line) return 'Unknown';
 
     // DFC check: card_faces exist and each face has its own type_line
-    // In that case use only the front face type (don't promote Land from back face)
+    // Use only the front face type so Land on the back doesn't affect sorting
     const isDFC = card.card_faces &&
       card.card_faces.length >= 2 &&
       card.card_faces[0].type_line &&
       card.card_faces[1].type_line;
 
     const relevantTypeLine = isDFC
-      ? card.card_faces[0].type_line   // front face only for DFCs
-      : card.type_line;                 // full type line for everything else
+      ? card.card_faces[0].type_line
+      : card.type_line;
 
     const supertypes = relevantTypeLine.split('—')[0].trim().split(' ');
 
-    // For non-DFC cards: if Land appears anywhere in the type line, always treat as Land
-    // This correctly handles Enchantment Land (Urza's Saga), Artifact Land, etc.
-    if (!isDFC && supertypes.includes('Land')) return 'Land';
-
-    // Otherwise return the first recognised type in priority order
+    // Return whichever recognised type has the highest priority (lowest order value)
+    // This means: Artifact Creature → Creature, Enchantment Land → Land, etc.
+    let bestType = null;
+    let bestOrder = Infinity;
     for (const t of supertypes) {
-      if (typeOrder[t] !== undefined) return t;
+      if (typeOrder[t] !== undefined && typeOrder[t] < bestOrder) {
+        bestType = t;
+        bestOrder = typeOrder[t];
+      }
     }
-    return supertypes[0] || 'Unknown';
+    return bestType || supertypes[0] || 'Unknown';
   };
 
   return cardList.sort((a, b) => {
