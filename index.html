@@ -1412,33 +1412,51 @@ function sortCards(cardList) {
     'Planeswalker': 5,
     'Land': 6
   };
-  
+
+  const getMainType = (card) => {
+    if (!card.type_line) return 'Unknown';
+
+    // DFC check: card_faces exist and each face has its own type_line
+    // In that case use only the front face type (don't promote Land from back face)
+    const isDFC = card.card_faces &&
+      card.card_faces.length >= 2 &&
+      card.card_faces[0].type_line &&
+      card.card_faces[1].type_line;
+
+    const relevantTypeLine = isDFC
+      ? card.card_faces[0].type_line   // front face only for DFCs
+      : card.type_line;                 // full type line for everything else
+
+    const supertypes = relevantTypeLine.split('—')[0].trim().split(' ');
+
+    // For non-DFC cards: if Land appears anywhere in the type line, always treat as Land
+    // This correctly handles Enchantment Land (Urza's Saga), Artifact Land, etc.
+    if (!isDFC && supertypes.includes('Land')) return 'Land';
+
+    // Otherwise return the first recognised type in priority order
+    for (const t of supertypes) {
+      if (typeOrder[t] !== undefined) return t;
+    }
+    return supertypes[0] || 'Unknown';
+  };
+
   return cardList.sort((a, b) => {
-    const getMainType = (card) => {
-      if (!card.type_line) return 'Unknown';
-      const types = card.type_line.split('—')[0].trim().split(' ');
-      for (const t of types) {
-        if (typeOrder[t] !== undefined) return t;
-      }
-      return types[0] || 'Unknown';
-    };
-    
     const aType = getMainType(a);
     const bType = getMainType(b);
-    
+
     const aTypeOrder = typeOrder[aType] !== undefined ? typeOrder[aType] : 99;
     const bTypeOrder = typeOrder[bType] !== undefined ? typeOrder[bType] : 99;
-    
+
     if (aTypeOrder !== bTypeOrder) {
       return aTypeOrder - bTypeOrder;
     }
-    
+
     const aCmc = a.cmc || 0;
     const bCmc = b.cmc || 0;
     if (aCmc !== bCmc) {
       return aCmc - bCmc;
     }
-    
+
     return a.name.localeCompare(b.name);
   });
 }
