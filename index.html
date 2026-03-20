@@ -1416,8 +1416,7 @@ function sortCards(cardList) {
   const getMainType = (card) => {
     if (!card.type_line) return 'Unknown';
 
-    // DFC check: card_faces exist and each face has its own type_line
-    // Use only the front face type so Land on the back doesn't affect sorting
+    // DFC: use front face only so a Land back face doesn't affect sorting
     const isDFC = card.card_faces &&
       card.card_faces.length >= 2 &&
       card.card_faces[0].type_line &&
@@ -1429,17 +1428,18 @@ function sortCards(cardList) {
 
     const supertypes = relevantTypeLine.split('—')[0].trim().split(' ');
 
-    // Return whichever recognised type has the highest priority (lowest order value)
-    // This means: Artifact Creature → Creature, Enchantment Land → Land, etc.
-    let bestType = null;
-    let bestOrder = Infinity;
+    // Rule 1: Creature always wins regardless of other types (Artifact Creature → Creature)
+    if (supertypes.includes('Creature')) return 'Creature';
+
+    // Rule 2: Land always groups with lands regardless of other types
+    // (Enchantment Land → Land, Artifact Land → Land)
+    if (supertypes.includes('Land')) return 'Land';
+
+    // Everything else: return first recognised type in order
     for (const t of supertypes) {
-      if (typeOrder[t] !== undefined && typeOrder[t] < bestOrder) {
-        bestType = t;
-        bestOrder = typeOrder[t];
-      }
+      if (typeOrder[t] !== undefined) return t;
     }
-    return bestType || supertypes[0] || 'Unknown';
+    return supertypes[0] || 'Unknown';
   };
 
   return cardList.sort((a, b) => {
