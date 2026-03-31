@@ -2022,11 +2022,11 @@ function loadImage(blob) {
   });
 }
 
-document.getElementById('transparent-bg-toggle').addEventListener('click', async () => {
+document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
   document.getElementById('transparent-bg-toggle').classList.toggle('active');
   
   if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    await generateVisualPreview();
+    requestAnimationFrame(() => generateVisualPreview());
   }
 });
   
