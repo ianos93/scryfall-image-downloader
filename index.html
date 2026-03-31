@@ -2027,7 +2027,7 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
   toggle.classList.toggle('active');
   
   if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    generateVisualPreview(); // no await — fire and forget
+    setTimeout(() => generateVisualPreview(), 0);
   }
 });
   
