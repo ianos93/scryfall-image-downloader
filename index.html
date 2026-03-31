@@ -2023,12 +2023,7 @@ function loadImage(blob) {
 }
 
 document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
-  const toggle = document.getElementById('transparent-bg-toggle');
-  toggle.classList.toggle('active');
-  
-  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    setTimeout(() => generateVisualPreview(), 0);
-  }
+  document.getElementById('transparent-bg-toggle').classList.toggle('active');
 });
   
 document.getElementById('download-visual-btn').addEventListener('click', () => {
