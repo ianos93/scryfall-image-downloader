@@ -2022,6 +2022,16 @@ function loadImage(blob) {
   });
 }
 
+document.getElementById('transparent-bg-toggle').addEventListener('click', async () => {
+  const toggle = document.getElementById('transparent-bg-toggle');
+  toggle.classList.toggle('active');
+  
+  // Only regenerate if we have data
+  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
+    await generateVisualPreview();
+  }
+});  
+  
 document.getElementById('download-visual-btn').addEventListener('click', () => {
   const canvas = document.getElementById('visual-preview-canvas');
   canvas.toBlob((blob) => {
