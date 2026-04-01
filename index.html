@@ -842,9 +842,12 @@
 
   <div id="tab-visual" style="display:none; margin-top: 20px;">
     <div class="float-card">
-      <div class="card-label">Preview</div>
-      <div id="visual-preview-canvas-container" style="max-height: 600px; overflow-y: auto; background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px;">
-        <canvas id="visual-preview-canvas" style="width: 100%; height: auto; display: block; border-radius: 4px;"></canvas>
+      <div class="card-label">Visual Decklist</div>
+      <div id="visual-preview-placeholder" style="min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(20,8,35,0.3); border-radius: 8px; border: 1px dashed rgba(156,140,185,0.2); padding: 40px;">
+        <div style="font-size: 48px; opacity: 0.3; margin-bottom: 16px;">⬚</div>
+        <div style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 15px; color: rgba(241,237,247,0.5); letter-spacing: 0.05em; text-align: center; line-height: 1.8;">
+          Your visual decklist will be generated<br>when you click Download Image
+        </div>
       </div>
       <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
         <button class="option-toggle" id="transparent-bg-toggle">
@@ -1870,7 +1873,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       animationDelay += 0.03;
     });
     
-    await generateVisualPreview();
+    // Preview generation deferred to download time for better performance
     document.getElementById('download-visual-btn').disabled=false;
   }
   
@@ -1932,17 +1935,11 @@ async function generateVisualPreview() {
   const sideHeight = sideRows > 0 ? (sideStackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = Math.max(mainHeight, sideHeight);
   
-  const canvas = document.getElementById('visual-preview-canvas');
-  
-  let offscreenCanvas, ctx;
-  if (typeof OffscreenCanvas !== 'undefined' && canvasWidth * canvasHeight < 268435456) {
-    offscreenCanvas = new OffscreenCanvas(canvasWidth, canvasHeight);
-    ctx = offscreenCanvas.getContext('2d', { alpha: true });
-  } else {
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    ctx = canvas.getContext('2d', { alpha: true });
-  }
+  // Create a new canvas for this render
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d', { alpha: true });
   
   const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
   if (!isTransparent) {
@@ -1997,13 +1994,7 @@ async function generateVisualPreview() {
     }
   }
   
-  if (offscreenCanvas) {
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
-    const mainCtx = canvas.getContext('2d', { alpha: true });
-    const bitmap = await offscreenCanvas.transferToImageBitmap();
-    mainCtx.drawImage(bitmap, 0, 0);
-  }
+  return canvas;
 }
 
 function loadImage(blob) {
@@ -2024,20 +2015,26 @@ function loadImage(blob) {
 
 document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
   document.getElementById('transparent-bg-toggle').classList.toggle('active');
-  
-  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    requestAnimationFrame(() => generateVisualPreview());
-  }
+  // Preview will be generated with current settings when user downloads
 });
   
-document.getElementById('download-visual-btn').addEventListener('click', () => {
-  const canvas = document.getElementById('visual-preview-canvas');
+document.getElementById('download-visual-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('download-visual-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+  
+  // Generate the visual decklist with current transparency setting
+  const canvas = await generateVisualPreview();
+  
   canvas.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `visual-decklist-${Date.now()}.png`;
     a.click();
     URL.revokeObjectURL(a.href);
+    
+    btn.disabled = false;
+    btn.textContent = '⬇ Download Image';
   }, 'image/png');
 });
 
