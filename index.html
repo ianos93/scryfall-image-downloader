@@ -1081,21 +1081,24 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
 // Global rate limiter for Scryfall
-const SCRYFALL_DELAY_MS = 100;
+// 150ms = ~6-7 req/s, comfortably within Scryfall's ~10 req/s guidance.
+const SCRYFALL_DELAY_MS = 150;
 let nextFetchTime = 0;
 
 async function rateLimitedFetch(url, options = {}) {
-  const now = Date.now();
-  let delay = nextFetchTime - now;
-  if (delay < 0) delay = 0;
-  
-  // Reserve the time slot for this request
-  nextFetchTime = now + delay + SCRYFALL_DELAY_MS;
-  
+  // Atomically claim the next available slot by advancing nextFetchTime
+  // from its *current* value (not Date.now()), so concurrent callers each
+  // receive a unique, non-overlapping slot — preventing the thundering-herd
+  // burst that occurred when multiple queue workers all read the same
+  // nextFetchTime before any of them had awaited their sleep.
+  const slot = Math.max(nextFetchTime, Date.now());
+  nextFetchTime = slot + SCRYFALL_DELAY_MS;
+
+  const delay = slot - Date.now();
   if (delay > 0) {
     await sleep(delay);
   }
-  
+
   return fetch(url, options);
 }
 
@@ -1709,7 +1712,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   updatePhaseBadge('metadata', 'active', 0);
   
   const cardMetadataMap = new Map();
-  const metadataQueue = new FetchQueue(5);
+  const metadataQueue = new FetchQueue(3);
   
   const metadataPromises = allEntries.map((entry, i) => {
     return metadataQueue.add(async () => {
@@ -1749,7 +1752,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgress(0, cardMetadataMap.size);
     updatePhaseBadge('options', 'active', 0);
     
-    const optionsQueue = new FetchQueue(5);
+    const optionsQueue = new FetchQueue(3);
     
     const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
       return optionsQueue.add(async () => {
@@ -1791,7 +1794,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(0, transformedCards.size);
   updatePhaseBadge('images', 'active', 0);
   
-  const imageQueue = new FetchQueue(5);
+  const imageQueue = new FetchQueue(3);
   
   const mainIndexes = sections.main.map((_, i) => i);
   const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
@@ -2580,10 +2583,20 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
 
 // Fetch premium version: showcase / borderless / Universes Beyond / Secret Lair — latest wins on overlap
 async function fetchPremiumVersion(card) {
-  // Uses prints_search_uri (CORS-safe) instead of /cards/search with ! operator
+  // Uses prints_search_uri (CORS-safe) instead of /cards/search with ! operator.
+  // We sanitize the URI with .replace() rather than blindly appending params,
+  // because prints_search_uri already contains order/unique/dir params — naive
+  // appending produced duplicate keys and malformed URLs that Scryfall rejected
+  // with CORS preflight failures (net::ERR_FAILED).
   if (!card || !card.prints_search_uri) return null;
-  const sep = card.prints_search_uri.includes('?') ? '&' : '?';
-  const url = card.prints_search_uri + sep + 'include_extras=true&order=released&dir=desc&unique=prints';
+  let url = card.prints_search_uri.includes('?')
+    ? card.prints_search_uri
+    : card.prints_search_uri + '?';
+  // Replace or append each param safely, matching the pattern used in fetchAllPrints
+  url = url.includes('unique=')         ? url.replace(/unique=[^&]*/,         'unique=prints')   : url + '&unique=prints';
+  url = url.includes('order=')          ? url.replace(/order=[^&]*/,           'order=released')  : url + '&order=released';
+  url = url.includes('dir=')            ? url.replace(/dir=[^&]*/,             'dir=desc')        : url + '&dir=desc';
+  url = url.includes('include_extras=') ? url.replace(/include_extras=[^&]*/, 'include_extras=true') : url + '&include_extras=true';
   const res = await rateLimitedFetch(url);
   if (!res.ok) return null;
   const data = await res.json();
