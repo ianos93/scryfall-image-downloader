@@ -1529,7 +1529,7 @@ async function fetchCardMetadata(entry) {
 
   // Premium mode: try showcase/borderless/UB/SL version, fall back silently if none
   if (usePremium && card && card.name) {
-    const premiumCard = await fetchPremiumVersion(card.name);
+    const premiumCard = await fetchPremiumVersion(card);
     if (premiumCard) {
       premiumCard._usedPremium = true;
       card = premiumCard;
@@ -1545,18 +1545,41 @@ async function fetchCardMetadata(entry) {
   return card;
 }
 
+// Fetch all prints of a card using the prints_search_uri Scryfall returns on every card object.
+// This avoids constructing /cards/search URLs with the ! operator, which triggers CORS preflight
+// failures in browsers. The prints_search_uri is already a valid, CORS-safe endpoint.
+async function fetchAllPrints(card) {
+  if (!card.prints_search_uri) return null;
+  // Append unique=prints and order by release date ascending so [0] is oldest
+  const base = card.prints_search_uri.includes('?') ? card.prints_search_uri : card.prints_search_uri + '?';
+  const url = base.replace(/unique=[^&]*/,'unique=prints').replace(/order=[^&]*/,'order=released')
+    + (base.includes('dir=') ? '' : '&dir=asc');
+  // Ensure dir=asc
+  const finalUrl = url.includes('dir=') ? url.replace(/dir=[^&]*/,'dir=asc') : url + '&dir=asc';
+  const res = await fetch(finalUrl);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.data || null;
+}
+
 async function applyCardOptions(card, options) {
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
-  
+
+  // Fetch all prints once if either option needs them
+  let allPrints = null;
+  if (options.paperOnly || options.firstPrint) {
+    allPrints = await fetchAllPrints(modifiedCard);
+  }
+
   if (options.paperOnly && modifiedCard.games) {
     if (!modifiedCard.games.includes('paper')) {
-      const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
-      const sr = await fetch(paperSearch, { });
-      const sd = await sr.json();
-      if (sr.ok && sd.data && sd.data.length > 0) {
-        modifiedCard = sd.data[0];
+      const paperPrints = allPrints ? allPrints.filter(c => c.games && c.games.includes('paper')) : [];
+      if (paperPrints.length > 0) {
+        modifiedCard = paperPrints[0];
         usedFallback = true;
+        // Re-fetch prints for the paper version if the card changed
+        allPrints = await fetchAllPrints(modifiedCard);
       } else {
         throw new Error('No paper printing found');
       }
@@ -1571,17 +1594,16 @@ async function applyCardOptions(card, options) {
     const userSpecifiedMatchingSet = originalEntry.set && originalEntry.set.toLowerCase() === modifiedCard.set.toLowerCase();
     const skipSearch = cardIsFromEarlySet || userSpecifiedMatchingSet;
     
-    if (!skipSearch) {
-      const gameFilter = options.paperOnly ? '+game:paper' : '';
-      const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}${gameFilter}+-is:promo+-is:digital&order=released&dir=asc&unique=prints`;
-      const fr = await fetch(firstUrl, { });
-      const fd = await fr.json();
-      if (fr.ok && fd.data && fd.data.length > 0) {
-        const oldest = fd.data[0];
-        if (oldest.id !== modifiedCard.id) {
-          modifiedCard = oldest;
-          usedFallback = true;
-        }
+    if (!skipSearch && allPrints) {
+      // Filter out promos and digital, then take the oldest remaining print
+      let candidates = allPrints.filter(c => !c.promo && !c.digital);
+      if (options.paperOnly) {
+        candidates = candidates.filter(c => c.games && c.games.includes('paper'));
+      }
+      // allPrints is already ordered asc by release date (oldest first)
+      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) {
+        modifiedCard = candidates[0];
+        usedFallback = true;
       }
     }
   }
@@ -2555,15 +2577,23 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
 });
 
 // Fetch premium version: showcase / borderless / Universes Beyond / Secret Lair — latest wins on overlap
-async function fetchPremiumVersion(cardName) {
-  const query = `!"${cardName}" (is:showcase or is:borderless or is:universesbeyond or set:sld or set:slc or set:slu or set:slp or set:spg) include:extras`;
-  const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=released&dir=desc&unique=prints`;
-  const res = await fetch(url, { });
+async function fetchPremiumVersion(card) {
+  // Uses prints_search_uri (CORS-safe) instead of /cards/search with ! operator
+  if (!card || !card.prints_search_uri) return null;
+  const sep = card.prints_search_uri.includes('?') ? '&' : '?';
+  const url = card.prints_search_uri + sep + 'include_extras=true&order=released&dir=desc&unique=prints';
+  const res = await fetch(url);
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
-  // Most recent result is always first (dir=desc) — handles all overlaps naturally
-  return data.data[0];
+  const PREMIUM_SETS = new Set(['sld','slc','slu','slp','spg']);
+  const premium = data.data.find(c =>
+    c.frame_effects?.includes('showcase') ||
+    c.border_color === 'borderless' ||
+    PREMIUM_SETS.has(c.set?.toLowerCase()) ||
+    c.promo_types?.some(pt => ['boosterfun','doublerainbow','extendedart','showcase','borderless','galaxyfoil','halofoil','embossed'].includes(pt))
+  );
+  return premium || null;
 }
 
 document.getElementById('modal-close').addEventListener('click', () => {
