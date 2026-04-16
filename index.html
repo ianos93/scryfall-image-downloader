@@ -9,8 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --imperial:  #2A123F;
@@ -1082,30 +1080,44 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-// Sequential, rate-limited fetch queue
+// Global rate limiter for Scryfall
+const SCRYFALL_DELAY_MS = 100;
+let nextFetchTime = 0;
+
+async function rateLimitedFetch(url, options = {}) {
+  const now = Date.now();
+  let delay = nextFetchTime - now;
+  if (delay < 0) delay = 0;
+  
+  // Reserve the time slot for this request
+  nextFetchTime = now + delay + SCRYFALL_DELAY_MS;
+  
+  if (delay > 0) {
+    await sleep(delay);
+  }
+  
+  return fetch(url, options);
+}
+
+// Pure concurrency queue (timing is entirely handled by rateLimitedFetch above)
 class FetchQueue {
-  constructor(delayMs = 100) {
-    this.delayMs = delayMs;
+  constructor(maxConcurrent = 5) {
+    this.maxConcurrent = maxConcurrent;
     this.queue = [];
-    this.isProcessing = false;
+    this.active = 0;
   }
   
   async add(fetchFn) {
     return new Promise((resolve, reject) => {
       this.queue.push({ fetchFn, resolve, reject });
-      if (!this.isProcessing) {
-        this.process();
-      }
+      this.process();
     });
   }
   
   async process() {
-    if (this.queue.length === 0) {
-      this.isProcessing = false;
-      return;
-    }
+    if (this.active >= this.maxConcurrent || this.queue.length === 0) return;
     
-    this.isProcessing = true;
+    this.active++;
     const { fetchFn, resolve, reject } = this.queue.shift();
     
     try {
@@ -1114,10 +1126,8 @@ class FetchQueue {
     } catch (error) {
       reject(error);
     } finally {
-      // Guarantee a strict delay before the next request fires
-      setTimeout(() => {
-        this.process();
-      }, this.delayMs);
+      this.active--;
+      this.process();
     }
   }
 }
@@ -1499,7 +1509,7 @@ async function fetchCardMetadata(entry) {
   let usedFallback = false;
 
   const url = buildUrl(entry);
-  const res = await fetch(url, { });
+  const res = await rateLimitedFetch(url, { });
   const data = await res.json();
 
   if (res.ok) {
@@ -1507,13 +1517,13 @@ async function fetchCardMetadata(entry) {
   } else {
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
-      const res2 = await fetch(url2, { });
+      const res2 = await rateLimitedFetch(url2, { });
       const data2 = await res2.json();
       if (res2.ok) { card = data2; }
     }
 
     if (!card && entry.name && (entry.set || entry.number)) {
-      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
+      const res3 = await rateLimitedFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
       const data3 = await res3.json();
       if (!res3.ok) throw new Error(data3.details||'Not found');
       card = data3;
@@ -1552,7 +1562,7 @@ async function fetchAllPrints(card) {
     + (base.includes('dir=') ? '' : '&dir=asc');
   // Ensure dir=asc
   const finalUrl = url.includes('dir=') ? url.replace(/dir=[^&]*/,'dir=asc') : url + '&dir=asc';
-  const res = await fetch(finalUrl);
+  const res = await rateLimitedFetch(finalUrl);
   if (!res.ok) return null;
   const data = await res.json();
   return data.data || null;
@@ -1620,7 +1630,7 @@ async function fetchCardImage(card, size) {
   const imgUrl = getImg(card, size);
   if (!imgUrl) throw new Error('No image for this size');
   
-  const ir = await fetch(imgUrl);
+  const ir = await rateLimitedFetch(imgUrl);
   
   if (!ir.ok) throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
   const blob = await ir.blob();
@@ -1699,7 +1709,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   updatePhaseBadge('metadata', 'active', 0);
   
   const cardMetadataMap = new Map();
-  const metadataQueue = new FetchQueue(100);
+  const metadataQueue = new FetchQueue(5);
   
   const metadataPromises = allEntries.map((entry, i) => {
     return metadataQueue.add(async () => {
@@ -1739,7 +1749,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgress(0, cardMetadataMap.size);
     updatePhaseBadge('options', 'active', 0);
     
-    const optionsQueue = new FetchQueue(100);
+    const optionsQueue = new FetchQueue(5);
     
     const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
       return optionsQueue.add(async () => {
@@ -1781,7 +1791,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(0, transformedCards.size);
   updatePhaseBadge('images', 'active', 0);
   
-  const imageQueue = new FetchQueue(100);
+  const imageQueue = new FetchQueue(5);
   
   const mainIndexes = sections.main.map((_, i) => i);
   const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
@@ -2574,7 +2584,7 @@ async function fetchPremiumVersion(card) {
   if (!card || !card.prints_search_uri) return null;
   const sep = card.prints_search_uri.includes('?') ? '&' : '?';
   const url = card.prints_search_uri + sep + 'include_extras=true&order=released&dir=desc&unique=prints';
-  const res = await fetch(url);
+  const res = await rateLimitedFetch(url);
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
