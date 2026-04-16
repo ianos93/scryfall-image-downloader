@@ -1575,12 +1575,15 @@ async function fetchAllPrints(card) {
     return printsCache.get(card.id);
   }
 
-  const base = card.prints_search_uri.includes('?') ? card.prints_search_uri : card.prints_search_uri + '?';
-  const url = base.replace(/unique=[^&]*/,'unique=prints').replace(/order=[^&]*/,'order=released')
-    + (base.includes('dir=') ? '' : '&dir=asc');
-  const finalUrl = url.includes('dir=') ? url.replace(/dir=[^&]*/,'dir=asc') : url + '&dir=asc';
-  const res = await rateLimitedFetch(finalUrl);
+  // Safely parse and update query parameters
+  const urlObj = new URL(card.prints_search_uri);
+  urlObj.searchParams.set('unique', 'prints');
+  urlObj.searchParams.set('order', 'released');
+  urlObj.searchParams.set('dir', 'asc');
+
+  const res = await rateLimitedFetch(urlObj.toString());
   if (!res.ok) return null;
+  
   const data = await res.json();
   const prints = data.data || null;
 
@@ -2613,24 +2616,21 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
 
 // Fetch premium version: showcase / borderless / Universes Beyond / Secret Lair — latest wins on overlap
 async function fetchPremiumVersion(card) {
-  // Uses prints_search_uri (CORS-safe) instead of /cards/search with ! operator.
-  // We sanitize the URI with .replace() rather than blindly appending params,
-  // because prints_search_uri already contains order/unique/dir params — naive
-  // appending produced duplicate keys and malformed URLs that Scryfall rejected
-  // with CORS preflight failures (net::ERR_FAILED).
   if (!card || !card.prints_search_uri) return null;
-  let url = card.prints_search_uri.includes('?')
-    ? card.prints_search_uri
-    : card.prints_search_uri + '?';
-  // Replace or append each param safely, matching the pattern used in fetchAllPrints
-  url = url.includes('unique=')         ? url.replace(/unique=[^&]*/,         'unique=prints')   : url + '&unique=prints';
-  url = url.includes('order=')          ? url.replace(/order=[^&]*/,           'order=released')  : url + '&order=released';
-  url = url.includes('dir=')            ? url.replace(/dir=[^&]*/,             'dir=desc')        : url + '&dir=desc';
-  url = url.includes('include_extras=') ? url.replace(/include_extras=[^&]*/, 'include_extras=true') : url + '&include_extras=true';
-  const res = await rateLimitedFetch(url);
+  
+  // Safely parse and update query parameters
+  const urlObj = new URL(card.prints_search_uri);
+  urlObj.searchParams.set('unique', 'prints');
+  urlObj.searchParams.set('order', 'released');
+  urlObj.searchParams.set('dir', 'desc');
+  urlObj.searchParams.set('include_extras', 'true');
+  
+  const res = await rateLimitedFetch(urlObj.toString());
   if (!res.ok) return null;
+  
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
+  
   const PREMIUM_SETS = new Set(['sld','slc','slu','slp','spg']);
   const premium = data.data.find(c =>
     c.frame_effects?.includes('showcase') ||
@@ -2638,6 +2638,7 @@ async function fetchPremiumVersion(card) {
     PREMIUM_SETS.has(c.set?.toLowerCase()) ||
     c.promo_types?.some(pt => ['boosterfun','doublerainbow','extendedart','showcase','borderless','galaxyfoil','halofoil','embossed'].includes(pt))
   );
+  
   return premium || null;
 }
 
