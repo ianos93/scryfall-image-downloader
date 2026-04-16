@@ -1232,6 +1232,16 @@ function isMainHeader(line) {
   return /^(deck|main\s?deck|main|commander|companion)\s*:?\s*(\(\d+\))?$/i.test(line);
 }
 
+function isBracketHeader(line) {
+  // Matches lines that are purely a [LABEL] bracket tag, e.g. [CRIATURAS], [TIERRAS], [SIDEBOARD]
+  return /^\[[^\]]+\]$/.test(line.trim());
+}
+
+function isBracketSideboardHeader(line) {
+  // Matches [SIDEBOARD] in any language variant that starts with "SIDEBOARD" or common aliases
+  return /^\[(sideboard|side\s?board|side|sb)\]$/i.test(line.trim());
+}
+
 function parseNamesWithSections(raw){
   const sections = { main: [], sideboard: [] };
   const seenMain = new Set();
@@ -1239,17 +1249,35 @@ function parseNamesWithSections(raw){
   let currentSection = 'main';
   let mainHasCards = false;      // true once we've parsed at least one main deck card
   let blankSeen = false;         // true once we've seen the first blank line after main cards
+  let hasBracketHeaders = false; // true if the list uses [BRACKET] style headers
 
   // Keep blank lines this time — we need them as separators
   const lines = raw.split('\n').map(l=>l.trim());
 
+  // Pre-scan: detect if the list uses bracket-style headers (Manabox / non-English formats)
+  // If so, suppress blank-line sideboard switching entirely — only explicit headers matter
+  for (const line of lines) {
+    if (isBracketHeader(line)) { hasBracketHeaders = true; break; }
+  }
+
   lines.forEach((line) => {
       // Blank line logic: first blank after main deck cards have been seen → switch to sideboard
+      // Suppressed when bracket-style headers are present (Manabox format)
       if (line === '' || line.startsWith('#')) {
-        if (line === '' && mainHasCards && currentSection === 'main' && !blankSeen) {
+        if (line === '' && mainHasCards && currentSection === 'main' && !blankSeen && !hasBracketHeaders) {
           blankSeen = true;
           currentSection = 'sideboard';
         }
+        return;
+      }
+
+      // Handle bracket-style headers like [CRIATURAS], [SIDEBOARD], [TIERRAS], etc.
+      if (isBracketHeader(line)) {
+        if (isBracketSideboardHeader(line)) {
+          currentSection = 'sideboard';
+          blankSeen = true;
+        }
+        // Any other [LABEL] is a category grouping — skip it without changing section
         return;
       }
 
@@ -1475,7 +1503,7 @@ async function fetchCardMetadata(entry) {
   let usedFallback = false;
 
   const url = buildUrl(entry);
-  const res = await fetch(url, {headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
+  const res = await fetch(url, { });
   const data = await res.json();
 
   if (res.ok) {
@@ -1483,13 +1511,13 @@ async function fetchCardMetadata(entry) {
   } else {
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
-      const res2 = await fetch(url2, {headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
+      const res2 = await fetch(url2, { });
       const data2 = await res2.json();
       if (res2.ok) { card = data2; }
     }
 
     if (!card && entry.name && (entry.set || entry.number)) {
-      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{headers:{'User-Agent':'ScryfallImageDownloader/3.0'}});
+      const res3 = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
       const data3 = await res3.json();
       if (!res3.ok) throw new Error(data3.details||'Not found');
       card = data3;
@@ -1524,7 +1552,7 @@ async function applyCardOptions(card, options) {
   if (options.paperOnly && modifiedCard.games) {
     if (!modifiedCard.games.includes('paper')) {
       const paperSearch = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}+game:paper&order=released&dir=asc&unique=prints`;
-      const sr = await fetch(paperSearch, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const sr = await fetch(paperSearch, { });
       const sd = await sr.json();
       if (sr.ok && sd.data && sd.data.length > 0) {
         modifiedCard = sd.data[0];
@@ -1546,7 +1574,7 @@ async function applyCardOptions(card, options) {
     if (!skipSearch) {
       const gameFilter = options.paperOnly ? '+game:paper' : '';
       const firstUrl = `https://api.scryfall.com/cards/search?q=!${encodeURIComponent('"'+ modifiedCard.name +'"')}${gameFilter}+-is:promo+-is:digital&order=released&dir=asc&unique=prints`;
-      const fr = await fetch(firstUrl, {headers:{'User-Agent':'ScryfallImageDownloader/2.0'}});
+      const fr = await fetch(firstUrl, { });
       const fd = await fr.json();
       if (fr.ok && fd.data && fd.data.length > 0) {
         const oldest = fd.data[0];
@@ -2530,7 +2558,7 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
 async function fetchPremiumVersion(cardName) {
   const query = `!"${cardName}" (is:showcase or is:borderless or is:universesbeyond or set:sld or set:slc or set:slu or set:slp or set:spg) include:extras`;
   const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&order=released&dir=desc&unique=prints`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'ScryfallImageDownloader/3.0' } });
+  const res = await fetch(url, { });
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.data || data.data.length === 0) return null;
