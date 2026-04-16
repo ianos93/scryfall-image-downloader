@@ -783,7 +783,6 @@
     <div class="float-card">
       <div class="card-label">Import Decklist</div>
       
-      <!-- Single upload option -->
       <div style="min-height: 222px; position: relative;">
         <div class="upload-zone" id="upload-area">
           <input type="file" id="file-input" accept=".txt" />
@@ -899,7 +898,6 @@
           A4 · 3 × 3 · 9 cards per page
         </div>
 
-        <!-- Page preview -->
         <div>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
             <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); font-family: 'Jost', sans-serif;">Page Preview</div>
@@ -1084,44 +1082,42 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-// Rate-limited parallel fetch queue
+// Sequential, rate-limited fetch queue
 class FetchQueue {
-  constructor(maxConcurrent = 5, delayMs = 120) {
-    this.maxConcurrent = maxConcurrent;
+  constructor(delayMs = 100) {
     this.delayMs = delayMs;
     this.queue = [];
-    this.active = 0;
-    this.lastFetchTime = 0;
+    this.isProcessing = false;
   }
   
   async add(fetchFn) {
     return new Promise((resolve, reject) => {
       this.queue.push({ fetchFn, resolve, reject });
-      this.process();
+      if (!this.isProcessing) {
+        this.process();
+      }
     });
   }
   
   async process() {
-    if (this.active >= this.maxConcurrent || this.queue.length === 0) return;
+    if (this.queue.length === 0) {
+      this.isProcessing = false;
+      return;
+    }
     
+    this.isProcessing = true;
     const { fetchFn, resolve, reject } = this.queue.shift();
-    this.active++;
     
     try {
-      const now = Date.now();
-      const timeSinceLastFetch = now - this.lastFetchTime;
-      if (timeSinceLastFetch < this.delayMs) {
-        await sleep(this.delayMs - timeSinceLastFetch);
-      }
-      this.lastFetchTime = Date.now();
-      
       const result = await fetchFn();
       resolve(result);
     } catch (error) {
       reject(error);
     } finally {
-      this.active--;
-      this.process();
+      // Guarantee a strict delay before the next request fires
+      setTimeout(() => {
+        this.process();
+      }, this.delayMs);
     }
   }
 }
@@ -1703,7 +1699,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   updatePhaseBadge('metadata', 'active', 0);
   
   const cardMetadataMap = new Map();
-  const metadataQueue = new FetchQueue(5, 120);
+  const metadataQueue = new FetchQueue(100);
   
   const metadataPromises = allEntries.map((entry, i) => {
     return metadataQueue.add(async () => {
@@ -1743,7 +1739,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     setProgress(0, cardMetadataMap.size);
     updatePhaseBadge('options', 'active', 0);
     
-    const optionsQueue = new FetchQueue(5, 120);
+    const optionsQueue = new FetchQueue(100);
     
     const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
       return optionsQueue.add(async () => {
@@ -1785,7 +1781,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(0, transformedCards.size);
   updatePhaseBadge('images', 'active', 0);
   
-  const imageQueue = new FetchQueue(5, 120);
+  const imageQueue = new FetchQueue(100);
   
   const mainIndexes = sections.main.map((_, i) => i);
   const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
@@ -2409,7 +2405,6 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
 
 </script>
 
-<!-- Secret Lair Toast -->
 <div id="sloth-toast" style="
   position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
   background: linear-gradient(135deg, rgba(40,15,5,0.97), rgba(30,10,40,0.97));
@@ -2429,10 +2424,8 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   </div>
 </div>
 
-<!-- Info Button -->
 <button class="info-btn" id="info-btn">ⓘ</button>
 
-<!-- Info Modal -->
 <div class="modal" id="info-modal">
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
@@ -2488,7 +2481,6 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   </div>
 </div>
 
-<!-- Footer -->
 <footer>
   <div>
     Created by <strong>ianos</strong>
