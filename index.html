@@ -1080,27 +1080,34 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-// Global rate limiter for Scryfall
-// 150ms = ~6-7 req/s, comfortably within Scryfall's ~10 req/s guidance.
-const SCRYFALL_DELAY_MS = 150;
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+// Only api.scryfall.com calls are throttled. Image downloads go to cards.scryfall.io
+// (a CDN) and are NOT subject to the API rate limit — routing them through the same
+// limiter was inflating the slot queue and causing artificial bursts on the API tier.
+const SCRYFALL_DELAY_MS = 150; // ~6-7 req/s, within Scryfall's ~10 req/s guidance
 let nextFetchTime = 0;
 
 async function rateLimitedFetch(url, options = {}) {
-  // Atomically claim the next available slot by advancing nextFetchTime
-  // from its *current* value (not Date.now()), so concurrent callers each
-  // receive a unique, non-overlapping slot — preventing the thundering-herd
-  // burst that occurred when multiple queue workers all read the same
-  // nextFetchTime before any of them had awaited their sleep.
+  // Atomically claim the next available slot by advancing nextFetchTime from its
+  // *current* value, so concurrent callers each get a unique non-overlapping slot.
   const slot = Math.max(nextFetchTime, Date.now());
   nextFetchTime = slot + SCRYFALL_DELAY_MS;
-
   const delay = slot - Date.now();
-  if (delay > 0) {
-    await sleep(delay);
-  }
-
+  if (delay > 0) await sleep(delay);
   return fetch(url, options);
 }
+
+// CDN image fetches bypass the API rate limiter entirely — the CDN has no rate limit.
+async function cdnFetch(url, options = {}) {
+  return fetch(url, options);
+}
+
+// ── In-memory prints cache ────────────────────────────────────────────────────
+// Keyed by card.id (Scryfall UUID). Eliminates redundant fetchAllPrints calls when:
+//   • the same card appears in both main deck and sideboard
+//   • paperOnly switches to a paper print and firstPrint then needs prints for it
+// This cache lives only for the duration of the page session.
+const printsCache = new Map();
 
 // Pure concurrency queue (timing is entirely handled by rateLimitedFetch above)
 class FetchQueue {
@@ -1557,25 +1564,37 @@ async function fetchCardMetadata(entry) {
 // Fetch all prints of a card using the prints_search_uri Scryfall returns on every card object.
 // This avoids constructing /cards/search URLs with the ! operator, which triggers CORS preflight
 // failures in browsers. The prints_search_uri is already a valid, CORS-safe endpoint.
+// Results are stored in the in-memory printsCache (keyed by card.id) so that repeated calls
+// for the same card — e.g. when paperOnly switches printing and firstPrint then needs the list
+// again, or when the same card appears in main + sideboard — are free memory lookups.
 async function fetchAllPrints(card) {
   if (!card.prints_search_uri) return null;
-  // Append unique=prints and order by release date ascending so [0] is oldest
+
+  // Return cached result if we already fetched prints for this card this session
+  if (card.id && printsCache.has(card.id)) {
+    return printsCache.get(card.id);
+  }
+
   const base = card.prints_search_uri.includes('?') ? card.prints_search_uri : card.prints_search_uri + '?';
   const url = base.replace(/unique=[^&]*/,'unique=prints').replace(/order=[^&]*/,'order=released')
     + (base.includes('dir=') ? '' : '&dir=asc');
-  // Ensure dir=asc
   const finalUrl = url.includes('dir=') ? url.replace(/dir=[^&]*/,'dir=asc') : url + '&dir=asc';
   const res = await rateLimitedFetch(finalUrl);
   if (!res.ok) return null;
   const data = await res.json();
-  return data.data || null;
+  const prints = data.data || null;
+
+  // Store in memory cache so subsequent calls for the same card are instant
+  if (card.id && prints) printsCache.set(card.id, prints);
+  return prints;
 }
 
 async function applyCardOptions(card, options) {
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
 
-  // Fetch all prints once if either option needs them
+  // Fetch all prints for the initial card. printsCache deduplicates by card.id,
+  // so this is a free memory lookup if we already fetched this card's prints.
   let allPrints = null;
   if (options.paperOnly || options.firstPrint) {
     allPrints = await fetchAllPrints(modifiedCard);
@@ -1587,8 +1606,11 @@ async function applyCardOptions(card, options) {
       if (paperPrints.length > 0) {
         modifiedCard = paperPrints[0];
         usedFallback = true;
-        // Re-fetch prints for the paper version if the card changed
-        allPrints = await fetchAllPrints(modifiedCard);
+        // Re-fetch prints for the switched card. printsCache makes this a single API
+        // call only if this card's ID hasn't been seen before — otherwise it's instant.
+        if (options.firstPrint) {
+          allPrints = await fetchAllPrints(modifiedCard);
+        }
       } else {
         throw new Error('No paper printing found');
       }
@@ -1621,8 +1643,11 @@ async function applyCardOptions(card, options) {
   modifiedCard._fromCache = card._fromCache;
   modifiedCard._originalEntry = card._originalEntry;
   
+  // Cache the transformed result with options flags baked into the variant key,
+  // so subsequent runs with the same options skip the whole options phase.
   if (!card._fromCache) {
-    const variant = usePremium ? 'premium' : 'default';
+    const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
+    const variant = (usePremium ? 'premium' : 'default') + optSuffix;
     setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
   }
   
@@ -1632,9 +1657,11 @@ async function applyCardOptions(card, options) {
 async function fetchCardImage(card, size) {
   const imgUrl = getImg(card, size);
   if (!imgUrl) throw new Error('No image for this size');
-  
-  const ir = await rateLimitedFetch(imgUrl);
-  
+
+  // Images are served from the Scryfall CDN (cards.scryfall.io), not the API.
+  // They have no rate limit, so we use a direct fetch to keep API slots free.
+  const ir = await cdnFetch(imgUrl);
+
   if (!ir.ok) throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
   const blob = await ir.blob();
   const ext = size === 'png' ? 'png' : 'jpg';
@@ -1679,6 +1706,9 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   isFetching=true;
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
+  // Clear the in-memory prints cache so each run starts fresh.
+  // This prevents stale data if the user changes options between runs.
+  printsCache.clear();
   
   const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='✦ Retrieving…';
   document.getElementById('results-actions').style.display='block';
