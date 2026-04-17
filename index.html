@@ -82,12 +82,35 @@
 
   .page { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 32px 100px; }
 
+  /* ── Responsive page width ── */
+  @media (max-width: 480px) {
+    .page { padding: 0 12px 60px; }
+  }
+  @media (min-width: 481px) and (max-width: 640px) {
+    .page { padding: 0 16px 70px; }
+  }
+  @media (min-width: 641px) and (max-width: 1024px) {
+    .page { max-width: 90%; padding: 0 24px 80px; }
+  }
+  @media (min-width: 1025px) and (max-width: 1400px) {
+    .page { max-width: 95%; padding: 0 32px 100px; }
+  }
+  @media (min-width: 1401px) {
+    .page { max-width: 1400px; padding: 0 40px 100px; }
+  }
+
   /* ── Header ── */
   header {
     padding: 64px 0 52px;
     text-align: center;
     position: relative;
     margin-bottom: 52px;
+  }
+  @media (max-width: 640px) {
+    header { padding: 36px 0 28px; margin-bottom: 28px; }
+  }
+  @media (min-width: 641px) and (max-width: 1024px) {
+    header { padding: 48px 0 38px; margin-bottom: 38px; }
   }
 
   .eyebrow {
@@ -905,8 +928,8 @@
               <button id="proxy-next" style="width:28px;height:28px;border-radius:50%;background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Next page">›</button>
             </div>
           </div>
-          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; position:relative; overflow:hidden;">
-            <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 100%; height: auto; transition: opacity 0.2s ease;"></canvas>
+          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; position:relative; overflow:hidden; display:flex; justify-content:center;">
+            <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: min(100%, 680px); height: auto; transition: opacity 0.2s ease;"></canvas>
           </div>
         </div>
 
