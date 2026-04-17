@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io https:; connect-src 'self' https:; worker-src blob:; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io; connect-src 'self' https:; worker-src blob:; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -229,10 +229,6 @@
     animation: shakeInput 0.35s ease;
   }
   
-  #deck-url-input:focus {
-    border-color: rgba(156,140,185,0.35);
-    box-shadow: 0 0 0 3px rgba(150,100,220,0.1);
-  }
   @keyframes shakeInput {
     0%,100% { transform: translateX(0); }
     20% { transform: translateX(-6px); }
@@ -755,11 +751,6 @@
                 transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  /* URL input focus */
-  #deck-url-input:focus {
-    border-color: rgba(156,140,185,0.35) !important;
-    box-shadow: 0 0 0 3px rgba(150,100,220,0.1) !important;
-  }
   /* ── Secret Lair easter egg ── */
   @keyframes slGlimmer {
     0%   { background: #C6B6DD !important; box-shadow: 0 6px 28px rgba(198,182,221,0.25), 0 2px 8px rgba(0,0,0,0.4); }
@@ -997,15 +988,26 @@ let selectedSize='png',fetchedImages=[],isFetching=false,paperOnly=false,firstPr
 let visualDeckData = { main: [], sideboard: [] };
 
 // Cache settings
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_EXPIRY_DAYS = 7;
 const CACHE_KEY_PREFIX = 'scryfall_cache_';
 
-// Card cache utilities
+// Global AbortController for cancelable fetches
+let currentAbortController = null;
+
+// Image node cache to drastically speed up re-rendering visual and proxy canvases
+const imageNodeCache = new Map();
+// Cache the specific visual preview state 
+let cachedVisualCanvas = null;
+let cachedVisualTransparent = null;
+
+function getCacheKey(name, set, number, variant) {
+  return `${CACHE_KEY_PREFIX}${encodeURIComponent(name)}|${encodeURIComponent(set || 'default')}|${encodeURIComponent(number || 'none')}|${encodeURIComponent(variant || 'default')}`;
+}
+
 function getCachedCard(name, set, number, variant) {
   try {
-    const v = variant || 'default';
-    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}_${v}`;
+    const cacheKey = getCacheKey(name, set, number, variant);
     const cached = localStorage.getItem(cacheKey);
     if (!cached) return null;
     
@@ -1026,8 +1028,7 @@ function getCachedCard(name, set, number, variant) {
 
 function setCachedCard(name, set, number, cardData, variant) {
   try {
-    const v = variant || 'default';
-    const cacheKey = `${CACHE_KEY_PREFIX}${name}_${set || 'default'}_${number || 'none'}_${v}`;
+    const cacheKey = getCacheKey(name, set, number, variant);
     const data = {
       card: cardData,
       timestamp: Date.now(),
@@ -1036,20 +1037,41 @@ function setCachedCard(name, set, number, cardData, variant) {
     localStorage.setItem(cacheKey, JSON.stringify(data));
   } catch (e) {
     clearOldCache();
+    // Try again after clearing old cache
+    try {
+      const cacheKey = getCacheKey(name, set, number, variant);
+      const data = {
+        card: cardData,
+        timestamp: Date.now(),
+        version: CACHE_VERSION
+      };
+      localStorage.setItem(cacheKey, JSON.stringify(data));
+    } catch(e2) {
+      console.warn(`[Cache] Storage full, unable to cache card: ${name}. You might need to clear your cache.`);
+    }
   }
 }
 
 function clearOldCache() {
   try {
-    const keysToRemove = [];
+    const entries = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(CACHE_KEY_PREFIX)) {
-        keysToRemove.push(key);
+        try {
+          const data = JSON.parse(localStorage.getItem(key));
+          entries.push({ key, timestamp: data.timestamp || 0 });
+        } catch(e) {}
       }
     }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-  } catch {}
+    // Sort oldest first
+    entries.sort((a, b) => a.timestamp - b.timestamp);
+    // Remove oldest 30% to free up quota
+    const toRemove = Math.max(1, Math.floor(entries.length * 0.3));
+    for(let i = 0; i < toRemove; i++) {
+      localStorage.removeItem(entries[i].key);
+    }
+  } catch (e) {}
 }
 
 function clearAllCache() {
@@ -1074,7 +1096,7 @@ function clearAllCache() {
 
 document.getElementById('size-options').addEventListener('click',e=>{
   const b=e.target.closest('.toggle');if(!b)return;
-  document.querySelectorAll('.toggle').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('#size-options .toggle').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');selectedSize=b.dataset.size;
   document.getElementById('size-desc').textContent=SIZE_DESCS[selectedSize]||'';
 });
@@ -1110,36 +1132,36 @@ ua.addEventListener('drop',e=>{e.preventDefault();ua.classList.remove('drag-over
 fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
 
-
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-
 // ── Rate limiting ─────────────────────────────────────────────────────────────
-// Only api.scryfall.com calls are throttled. Image downloads go to cards.scryfall.io
-// (a CDN) and are NOT subject to the API rate limit — routing them through the same
-// limiter was inflating the slot queue and causing artificial bursts on the API tier.
-const SCRYFALL_DELAY_MS = 150; // ~6-7 req/s, within Scryfall's ~10 req/s guidance
+const SCRYFALL_DELAY_MS = 150; 
 let nextFetchTime = 0;
 
 async function rateLimitedFetch(url, options = {}) {
-  // Atomically claim the next available slot by advancing nextFetchTime from its
-  // *current* value, so concurrent callers each get a unique non-overlapping slot.
+  options.signal = currentAbortController?.signal;
   const slot = Math.max(nextFetchTime, Date.now());
   nextFetchTime = slot + SCRYFALL_DELAY_MS;
   const delay = slot - Date.now();
-  if (delay > 0) await sleep(delay);
+  if (delay > 0) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, delay);
+      if(options.signal) {
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }
+    });
+  }
+  if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   return fetch(url, options);
 }
 
-// CDN image fetches bypass the API rate limiter entirely — the CDN has no rate limit.
 async function cdnFetch(url, options = {}) {
+  options.signal = currentAbortController?.signal;
   return fetch(url, options);
 }
 
 // ── In-memory prints cache ────────────────────────────────────────────────────
-// Keyed by card.id (Scryfall UUID). Eliminates redundant fetchAllPrints calls when:
-//   • the same card appears in both main deck and sideboard
-//   • paperOnly switches to a paper print and firstPrint then needs prints for it
-// This cache lives only for the duration of the page session.
 const printsCache = new Map();
 
 // Pure concurrency queue (timing is entirely handled by rateLimitedFetch above)
@@ -1175,29 +1197,18 @@ class FetchQueue {
   }
 }
 
-function stripBrackets(s) {
-  return s.replace(/[\(\)\[\]<>]/g, '').trim();
-}
-
-function isSetCode(s) {
-  return /^[a-zA-Z0-9]{2,6}$/.test(s) && /[a-zA-Z]/.test(s);
-}
-
+function stripBrackets(s) { return s.replace(/[\(\)\[\]<>]/g, '').trim(); }
+function isSetCode(s) { return /^[a-zA-Z0-9]{2,6}$/.test(s) && /[a-zA-Z]/.test(s); }
 function isBareSetCode(s) {
   if (!/^[A-Z0-9]{2,6}$/.test(s)) return false;
   if (!/[A-Z]/.test(s)) return false;
   return true;
 }
-
-function isCollectorNum(s) {
-  return /^\d+[a-zA-Z]?$/.test(s);
-}
+function isCollectorNum(s) { return /^\d+[a-zA-Z]?$/.test(s); }
 
 function parseLine(raw) {
   let l = raw.trim();
-  
   l = l.replace(/^[\/\#\*\-\s]+/, '').trim();
-  
   let quantity = 1;
   const qtyMatch = l.match(/^(\d+)\s*[xX×]\s*/);
   if (qtyMatch) {
@@ -1210,7 +1221,6 @@ function parseLine(raw) {
       l = l.replace(/^\d+\s+/, '');
     }
   }
-  
   l = l.replace(/\s*\/\/.*$/, '').trim();
 
   const bracketedTokens = [];
@@ -1235,14 +1245,10 @@ function parseLine(raw) {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     if (!number && isCollectorNum(p)) { 
-      number = p;
-      lastNameIndex = i - 1;
-      continue; 
+      number = p; lastNameIndex = i - 1; continue; 
     }
     if (!set && isBareSetCode(p) && i > 0) { 
-      set = p.toLowerCase();
-      lastNameIndex = i - 1;
-      continue; 
+      set = p.toLowerCase(); lastNameIndex = i - 1; continue; 
     }
     nameParts.unshift(...parts.slice(0, i + 1));
     break;
@@ -1253,112 +1259,56 @@ function parseLine(raw) {
   }
 
   const name = nameParts.join(' ').trim() || null;
-
   return { raw, name, set, number, quantity };
 }
 
 function buildUrl(entry, fuzzy=false) {
   const method = fuzzy ? 'fuzzy' : 'exact';
-  if (entry.set && entry.number && !entry.name)
-    return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  if (entry.set && entry.number && entry.name)
-    return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  if (entry.set && entry.name)
-    return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}`;
+  if (entry.set && entry.number && !entry.name) return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
+  if (entry.set && entry.number && entry.name) return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
+  if (entry.set && entry.name) return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}`;
   return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
 }
 
-// Section header detection — matches the cleaned line (comment markers already stripped)
 const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|side|sb|s\.b\.?|about|commander|companion|maybeboard|maybe\s?board|maybe|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?):?$/i;
-
-// Detects if a cleaned line is a sideboard header in any common format
-function isSideboardHeader(line) {
-  return /^(sideboard|side\s?board|side|sb|s\.b\.?)\s*:?\s*(\(\d+\))?$/i.test(line);
-}
-
-// Detects if a cleaned line is a main deck header
-function isMainHeader(line) {
-  return /^(deck|main\s?deck|main|commander|companion)\s*:?\s*(\(\d+\))?$/i.test(line);
-}
-
-function isBracketHeader(line) {
-  // Matches lines that are purely a [LABEL] bracket tag, e.g. [CRIATURAS], [TIERRAS], [SIDEBOARD]
-  return /^\[[^\]]+\]$/.test(line.trim());
-}
-
-function isBracketSideboardHeader(line) {
-  // Matches [SIDEBOARD] in any language variant that starts with "SIDEBOARD" or common aliases
-  return /^\[(sideboard|side\s?board|side|sb)\]$/i.test(line.trim());
-}
+function isSideboardHeader(line) { return /^(sideboard|side\s?board|side|sb|s\.b\.?)\s*:?\s*(\(\d+\))?$/i.test(line); }
+function isMainHeader(line) { return /^(deck|main\s?deck|main|commander|companion)\s*:?\s*(\(\d+\))?$/i.test(line); }
+function isBracketHeader(line) { return /^\[[^\]]+\]$/.test(line.trim()); }
+function isBracketSideboardHeader(line) { return /^\[(sideboard|side\s?board|side|sb)\]$/i.test(line.trim()); }
 
 function parseNamesWithSections(raw){
   const sections = { main: [], sideboard: [] };
   const seenMain = new Set();
   const seenSideboard = new Set();
   let currentSection = 'main';
-  let mainHasCards = false;      // true once we've parsed at least one main deck card
-  let blankSeen = false;         // true once we've seen the first blank line after main cards
-  let hasBracketHeaders = false; // true if the list uses [BRACKET] style headers
-
-  // Keep blank lines this time — we need them as separators
+  let mainHasCards = false;      
+  let blankSeen = false;         
+  let hasBracketHeaders = false; 
   const lines = raw.split('\n').map(l=>l.trim());
 
-  // Pre-scan: detect if the list uses bracket-style headers (Manabox / non-English formats)
-  // If so, suppress blank-line sideboard switching entirely — only explicit headers matter
-  for (const line of lines) {
-    if (isBracketHeader(line)) { hasBracketHeaders = true; break; }
-  }
+  for (const line of lines) { if (isBracketHeader(line)) { hasBracketHeaders = true; break; } }
 
   lines.forEach((line) => {
-      // Blank line logic: first blank after main deck cards have been seen → switch to sideboard
-      // Suppressed when bracket-style headers are present (Manabox format)
       if (line === '' || line.startsWith('#')) {
         if (line === '' && mainHasCards && currentSection === 'main' && !blankSeen && !hasBracketHeaders) {
-          blankSeen = true;
-          currentSection = 'sideboard';
+          blankSeen = true; currentSection = 'sideboard';
         }
         return;
       }
-
-      // Handle bracket-style headers like [CRIATURAS], [SIDEBOARD], [TIERRAS], etc.
       if (isBracketHeader(line)) {
-        if (isBracketSideboardHeader(line)) {
-          currentSection = 'sideboard';
-          blankSeen = true;
-        }
-        // Any other [LABEL] is a category grouping — skip it without changing section
+        if (isBracketSideboardHeader(line)) { currentSection = 'sideboard'; blankSeen = true; }
         return;
       }
-
-      // Strip leading comment/marker characters
       const cleanLine = line.replace(/^[\/\#\*\-\s]+/, '').trim();
-
-      // Explicit section headers always take priority
-      if (isSideboardHeader(cleanLine)) {
-        currentSection = 'sideboard';
-        blankSeen = true; // treat as resolved
-        return;
-      }
-      if (isMainHeader(cleanLine)) {
-        currentSection = 'main';
-        blankSeen = false;
-        return;
-      }
-      // Generic deck headers (lands, creatures, etc.) — skip line, don't change section
-      if (DECK_HEADERS.test(cleanLine)) {
-        return;
-      }
+      if (isSideboardHeader(cleanLine)) { currentSection = 'sideboard'; blankSeen = true; return; }
+      if (isMainHeader(cleanLine)) { currentSection = 'main'; blankSeen = false; return; }
+      if (DECK_HEADERS.test(cleanLine)) { return; }
 
       const entry = parseLine(line);
-
-      // Skip if parsed name itself is a header keyword
-      if (entry.name && (isSideboardHeader(entry.name) || isMainHeader(entry.name) || DECK_HEADERS.test(entry.name))) {
-        return;
-      }
+      if (entry.name && (isSideboardHeader(entry.name) || isMainHeader(entry.name) || DECK_HEADERS.test(entry.name))) { return; }
 
       const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
       const seen = currentSection === 'main' ? seenMain : seenSideboard;
-
       if(!entry.name&&!entry.set||seen.has(key.toLowerCase())) return;
       seen.add(key.toLowerCase());
 
@@ -1369,20 +1319,6 @@ function parseNamesWithSections(raw){
   return sections;
 }
 
-function parseNames(raw){
-  const seen=new Set();
-  return raw.split('\n')
-    .map(l=>l.trim())
-    .filter(l=>l&&!l.startsWith('#'))
-    .map(parseLine)
-    .filter(e=>{
-      const key=(e.name||'')+':'+(e.set||'')+':'+(e.number||'');
-      const n = e.name||'';
-      if(!e.name&&!e.set||isSideboardHeader(n)||isMainHeader(n)||DECK_HEADERS.test(n)||seen.has(key.toLowerCase()))return false;
-      seen.add(key.toLowerCase());
-      return true;
-    });
-}
 function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null;if(card.card_faces?.[0]?.image_uris)return card.card_faces[0].image_uris[size]||null;return null;}
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
@@ -1397,145 +1333,45 @@ function setProgressPhase(phase){
 function updatePhaseBadge(phaseId, status, count) {
   const badge = document.getElementById(`badge-${phaseId}`);
   const countEl = document.getElementById(`count-${phaseId}`);
-  
   if (badge) {
     badge.classList.remove('active', 'complete');
-    if (status === 'active') {
-      badge.classList.add('active');
-    } else if (status === 'complete') {
-      badge.classList.add('complete');
-    }
+    if (status === 'active') badge.classList.add('active');
+    else if (status === 'complete') badge.classList.add('complete');
   }
-  
-  if (countEl && count !== undefined) {
-    countEl.textContent = count;
-  }
+  if (countEl && count !== undefined) countEl.textContent = count;
 }
 
 function showPhaseSummary(showOptions) {
-  const summary = document.getElementById('phase-summary');
-  const optionsBadge = document.getElementById('badge-options');
-  
-  summary.style.display = 'flex';
-  
-  if (showOptions) {
-    optionsBadge.style.display = 'inline-flex';
-  } else {
-    optionsBadge.style.display = 'none';
-  }
-}
-
-function makeTile(name){const el=document.createElement('div');el.className='card-item';el.innerHTML=`<div class="card-loading"><div class="ring"></div><div>${name}</div></div>`;document.getElementById('card-grid').appendChild(el);return el;}
-function tileOk(el,name,url,scryfallUrl,setCode){
-  el.style.cursor='pointer';
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = name;
-  img.loading = 'lazy';
-  
-  const overlay = document.createElement('div');
-  overlay.className = 'card-overlay';
-  
-  const overlayInner = document.createElement('div');
-  overlayInner.className = 'card-overlay-inner';
-  
-  const cardName = document.createElement('div');
-  cardName.className = 'card-name';
-  cardName.textContent = name;
-  
-  overlayInner.appendChild(cardName);
-  if (setCode) {
-    const setEl = document.createElement('div');
-    setEl.className = 'card-set';
-    setEl.textContent = setCode.toUpperCase();
-    overlayInner.appendChild(setEl);
-  }
-  
-  overlay.appendChild(overlayInner);
-  el.innerHTML = '';
-  el.appendChild(img);
-  el.appendChild(overlay);
-  
-  if(scryfallUrl && isValidScryfallUrl(scryfallUrl)){
-    const open=()=>window.open(scryfallUrl,'_blank','noopener,noreferrer');
-    el.addEventListener('click', open);
-    el.addEventListener('auxclick', e=>{ if(e.button===1){ e.preventDefault(); open(); } });
-  }
-}
-
-function sanitizeHTML(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
+  document.getElementById('phase-summary').style.display = 'flex';
+  document.getElementById('badge-options').style.display = showOptions ? 'inline-flex' : 'none';
 }
 
 function isValidScryfallUrl(url) {
   try {
     const urlObj = new URL(url);
     return urlObj.hostname === 'scryfall.com' || urlObj.hostname.endsWith('.scryfall.com');
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-function tileErr(el){el.remove();}
 
 function sortCards(cardList) {
-  const typeOrder = {
-    'Creature': 0,
-    'Instant': 1,
-    'Sorcery': 2,
-    'Enchantment': 3,
-    'Artifact': 4,
-    'Planeswalker': 5,
-    'Land': 6
-  };
-
+  const typeOrder = { 'Creature': 0, 'Instant': 1, 'Sorcery': 2, 'Enchantment': 3, 'Artifact': 4, 'Planeswalker': 5, 'Land': 6 };
   const getMainType = (card) => {
     if (!card.type_line) return 'Unknown';
-
-    // DFC: use front face only so a Land back face doesn't affect sorting
-    const isDFC = card.card_faces &&
-      card.card_faces.length >= 2 &&
-      card.card_faces[0].type_line &&
-      card.card_faces[1].type_line;
-
-    const relevantTypeLine = isDFC
-      ? card.card_faces[0].type_line
-      : card.type_line;
-
+    const isDFC = card.card_faces && card.card_faces.length >= 2 && card.card_faces[0].type_line && card.card_faces[1].type_line;
+    const relevantTypeLine = isDFC ? card.card_faces[0].type_line : card.type_line;
     const supertypes = relevantTypeLine.split('—')[0].trim().split(' ');
-
-    // Rule 1: Creature always wins regardless of other types (Artifact Creature → Creature)
     if (supertypes.includes('Creature')) return 'Creature';
-
-    // Rule 2: Land always groups with lands regardless of other types
-    // (Enchantment Land → Land, Artifact Land → Land)
     if (supertypes.includes('Land')) return 'Land';
-
-    // Everything else: return first recognised type in order
-    for (const t of supertypes) {
-      if (typeOrder[t] !== undefined) return t;
-    }
+    for (const t of supertypes) { if (typeOrder[t] !== undefined) return t; }
     return supertypes[0] || 'Unknown';
   };
-
   return cardList.sort((a, b) => {
-    const aType = getMainType(a);
-    const bType = getMainType(b);
-
+    const aType = getMainType(a), bType = getMainType(b);
     const aTypeOrder = typeOrder[aType] !== undefined ? typeOrder[aType] : 99;
     const bTypeOrder = typeOrder[bType] !== undefined ? typeOrder[bType] : 99;
-
-    if (aTypeOrder !== bTypeOrder) {
-      return aTypeOrder - bTypeOrder;
-    }
-
-    const aCmc = a.cmc || 0;
-    const bCmc = b.cmc || 0;
-    if (aCmc !== bCmc) {
-      return aCmc - bCmc;
-    }
-
+    if (aTypeOrder !== bTypeOrder) return aTypeOrder - bTypeOrder;
+    const aCmc = a.cmc || 0, bCmc = b.cmc || 0;
+    if (aCmc !== bCmc) return aCmc - bCmc;
     return a.name.localeCompare(b.name);
   });
 }
@@ -1543,84 +1379,54 @@ function sortCards(cardList) {
 async function fetchCardMetadata(entry) {
   const variant = usePremium ? 'premium' : 'default';
   const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
-  if (cachedCard) {
-    cachedCard._fromCache = true;
-    return cachedCard;
-  }
+  if (cachedCard) { cachedCard._fromCache = true; return cachedCard; }
   
-  let card = null;
-  let usedFallback = false;
-
+  let card = null, usedFallback = false;
   const url = buildUrl(entry);
   const res = await rateLimitedFetch(url, { });
   const data = await res.json();
 
-  if (res.ok) {
-    card = data;
-  } else {
+  if (res.ok) { card = data; } 
+  else {
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
       const res2 = await rateLimitedFetch(url2, { });
       const data2 = await res2.json();
-      if (res2.ok) { card = data2; }
+      if (res2.ok) card = data2;
     }
-
     if (!card && entry.name && (entry.set || entry.number)) {
       const res3 = await rateLimitedFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
       const data3 = await res3.json();
       if (!res3.ok) throw new Error(data3.details||'Not found');
-      card = data3;
-      usedFallback = true;
+      card = data3; usedFallback = true;
     } else if (!card) {
       throw new Error(data.details||'Not found');
     }
   }
 
-  // Premium mode: try showcase/borderless/UB/SL version, fall back silently if none
   if (usePremium && card && card.name) {
     const premiumCard = await fetchPremiumVersion(card);
-    if (premiumCard) {
-      premiumCard._usedPremium = true;
-      card = premiumCard;
-    }
+    if (premiumCard) { premiumCard._usedPremium = true; card = premiumCard; }
   }
 
   card._usedFallback = usedFallback;
   card._fromCache = false;
   card._originalEntry = entry;
-
-  // Cache under the correct variant key
   setCachedCard(entry.name, entry.set, entry.number, card, variant);
   return card;
 }
 
-// Fetch all prints of a card using the prints_search_uri Scryfall returns on every card object.
-// This avoids constructing /cards/search URLs with the ! operator, which triggers CORS preflight
-// failures in browsers. The prints_search_uri is already a valid, CORS-safe endpoint.
-// Results are stored in the in-memory printsCache (keyed by card.id) so that repeated calls
-// for the same card — e.g. when paperOnly switches printing and firstPrint then needs the list
-// again, or when the same card appears in main + sideboard — are free memory lookups.
 async function fetchAllPrints(card) {
   if (!card.prints_search_uri) return null;
-
-  // Return cached result if we already fetched prints for this card this session
-  if (card.id && printsCache.has(card.id)) {
-    return printsCache.get(card.id);
-  }
-
-  // Safely parse and update query parameters
+  if (card.id && printsCache.has(card.id)) return printsCache.get(card.id);
   const urlObj = new URL(card.prints_search_uri);
   urlObj.searchParams.set('unique', 'prints');
   urlObj.searchParams.set('order', 'released');
   urlObj.searchParams.set('dir', 'asc');
-
   const res = await rateLimitedFetch(urlObj.toString());
   if (!res.ok) return null;
-  
   const data = await res.json();
   const prints = data.data || null;
-
-  // Store in memory cache so subsequent calls for the same card are instant
   if (card.id && prints) printsCache.set(card.id, prints);
   return prints;
 }
@@ -1628,25 +1434,15 @@ async function fetchAllPrints(card) {
 async function applyCardOptions(card, options) {
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
-
-  // Fetch all prints for the initial card. printsCache deduplicates by card.id,
-  // so this is a free memory lookup if we already fetched this card's prints.
   let allPrints = null;
-  if (options.paperOnly || options.firstPrint) {
-    allPrints = await fetchAllPrints(modifiedCard);
-  }
+  if (options.paperOnly || options.firstPrint) { allPrints = await fetchAllPrints(modifiedCard); }
 
   if (options.paperOnly && modifiedCard.games) {
     if (!modifiedCard.games.includes('paper')) {
       const paperPrints = allPrints ? allPrints.filter(c => c.games && c.games.includes('paper')) : [];
       if (paperPrints.length > 0) {
-        modifiedCard = paperPrints[0];
-        usedFallback = true;
-        // Re-fetch prints for the switched card. printsCache makes this a single API
-        // call only if this card's ID hasn't been seen before — otherwise it's instant.
-        if (options.firstPrint) {
-          allPrints = await fetchAllPrints(modifiedCard);
-        }
+        modifiedCard = paperPrints[0]; usedFallback = true;
+        if (options.firstPrint) allPrints = await fetchAllPrints(modifiedCard);
       } else {
         throw new Error('No paper printing found');
       }
@@ -1655,53 +1451,35 @@ async function applyCardOptions(card, options) {
 
   if (options.firstPrint) {
     const earlySetCodes = ['lea', 'leb', '2ed', 'arn', 'atq', 'leg', '3ed', 'drk', 'fem', 'ice', 'chr', 'hml', 'all', 'mir', 'vis', 'wth', 'tmp', 'sth', 'exo', 'usg', 'ulg', 'uds'];
-    
     const cardIsFromEarlySet = modifiedCard.set && earlySetCodes.includes(modifiedCard.set.toLowerCase());
     const originalEntry = card._originalEntry || {};
     const userSpecifiedMatchingSet = originalEntry.set && originalEntry.set.toLowerCase() === modifiedCard.set.toLowerCase();
     const skipSearch = cardIsFromEarlySet || userSpecifiedMatchingSet;
-    
     if (!skipSearch && allPrints) {
-      // Filter out promos and digital, then take the oldest remaining print
       let candidates = allPrints.filter(c => !c.promo && !c.digital);
-      if (options.paperOnly) {
-        candidates = candidates.filter(c => c.games && c.games.includes('paper'));
-      }
-      // allPrints is already ordered asc by release date (oldest first)
-      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) {
-        modifiedCard = candidates[0];
-        usedFallback = true;
-      }
+      if (options.paperOnly) candidates = candidates.filter(c => c.games && c.games.includes('paper'));
+      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) { modifiedCard = candidates[0]; usedFallback = true; }
     }
   }
 
   modifiedCard._usedFallback = usedFallback;
   modifiedCard._fromCache = card._fromCache;
   modifiedCard._originalEntry = card._originalEntry;
-  
-  // Cache the transformed result with options flags baked into the variant key,
-  // so subsequent runs with the same options skip the whole options phase.
   if (!card._fromCache) {
     const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
     const variant = (usePremium ? 'premium' : 'default') + optSuffix;
     setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
   }
-  
   return modifiedCard;
 }
 
 async function fetchCardImage(card, size) {
   const imgUrl = getImg(card, size);
   if (!imgUrl) throw new Error('No image for this size');
-
-  // Images are served from the Scryfall CDN (cards.scryfall.io), not the API.
-  // They have no rate limit, so we use a direct fetch to keep API slots free.
   const ir = await cdnFetch(imgUrl);
-
   if (!ir.ok) throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
   const blob = await ir.blob();
   const ext = size === 'png' ? 'png' : 'jpg';
-  
   return {
     name: card.name,
     blob: blob,
@@ -1716,37 +1494,40 @@ async function fetchCardImage(card, size) {
 }
 
 document.getElementById('fetch-btn').addEventListener('click',async()=>{
-  if(isFetching)return;
-  const ta=document.getElementById('card-input');
+  const fb = document.getElementById('fetch-btn');
+  
+  if(isFetching){
+    if(currentAbortController) currentAbortController.abort();
+    return;
+  }
+  
+  const ta = document.getElementById('card-input');
   const sections = parseNamesWithSections(ta.value);
   const allEntries = [...sections.main, ...sections.sideboard];
   
   if(allEntries.length === 0){
-    ta.classList.add('input-error');
-    ta.focus();
+    ta.classList.add('input-error'); ta.focus();
     setTimeout(()=>ta.classList.remove('input-error'),1000);
     return;
   }
   
   if(allEntries.length > 100) {
-    if(!confirm(`You're about to fetch ${allEntries.length} cards. This may take several minutes and could trigger rate limiting. Continue?`)) {
-      return;
-    }
+    if(!confirm(`You're about to fetch ${allEntries.length} cards. This may take several minutes and could trigger rate limiting. Continue?`)) return;
   }
   
-  if(allEntries.length > 500) {
-    alert('Maximum 500 cards allowed. Please reduce your list size.');
-    return;
-  }
+  if(allEntries.length > 500) { alert('Maximum 500 cards allowed. Please reduce your list size.'); return; }
   
   isFetching=true;
+  currentAbortController = new AbortController();
+  const signal = currentAbortController.signal;
+  
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
-  // Clear the in-memory prints cache so each run starts fresh.
-  // This prevents stale data if the user changes options between runs.
   printsCache.clear();
+  imageNodeCache.clear();
+  cachedVisualCanvas = null;
   
-  const fb=document.getElementById('fetch-btn');fb.disabled=true;fb.innerHTML='✦ Retrieving…';
+  fb.innerHTML='✦ &nbsp; Cancel Summoning';
   document.getElementById('results-actions').style.display='block';
   document.getElementById('tab-individual').style.display='block';
   document.getElementById('tab-visual').style.display='none';
@@ -1757,16 +1538,13 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   
   showPhaseSummary(paperOnly || firstPrint);
   updatePhaseBadge('metadata', 'inactive', 0);
-  if (paperOnly || firstPrint) {
-    updatePhaseBadge('options', 'inactive', 0);
-  }
+  if (paperOnly || firstPrint) updatePhaseBadge('options', 'inactive', 0);
   updatePhaseBadge('images', 'inactive', 0);
   
   const grid = document.getElementById('card-grid');
-  grid.innerHTML='';
-  grid.style.display='none';
+  grid.innerHTML=''; grid.style.display='none';
   
-  document.getElementById('log').innerHTML='';document.getElementById('log').style.display='none';
+  document.getElementById('log').innerHTML=''; document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').style.display='none';
   document.getElementById('dl-btn').disabled=true;
   document.getElementById('proxy-generate-btn').disabled=true;
@@ -1774,236 +1552,211 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   
   let ok=0,err=0;
   
-  setProgressPhase('Retrieving Card Data');
-  updatePhaseBadge('metadata', 'active', 0);
-  
-  const cardMetadataMap = new Map();
-  const metadataQueue = new FetchQueue(3);
-  
-  const metadataPromises = allEntries.map((entry, i) => {
-    return metadataQueue.add(async () => {
-      try {
-        const card = await fetchCardMetadata(entry);
-        return { index: i, card, error: null };
-      } catch (e) {
-        return { index: i, card: null, error: e.message };
-      }
-    });
-  });
-  
-  let completedMetadata = 0;
-  for (const promise of metadataPromises) {
-    const result = await promise;
+  try {
+    setProgressPhase('Retrieving Card Data');
+    updatePhaseBadge('metadata', 'active', 0);
     
-    if (result.error) {
-      const entry = allEntries[result.index];
-      const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-      log(`✕  ${displayName}: ${result.error}`, 'e');
-      err++;
-    } else {
-      cardMetadataMap.set(result.index, result.card);
-    }
+    const cardMetadataMap = new Map();
+    const metadataQueue = new FetchQueue(3);
     
-    completedMetadata++;
-    setProgress(completedMetadata, allEntries.length);
-    updatePhaseBadge('metadata', 'active', completedMetadata);
-  }
-  
-  updatePhaseBadge('metadata', 'complete', cardMetadataMap.size);
-  
-  const transformedCards = new Map();
-  
-  if (paperOnly || firstPrint) {
-    setProgressPhase('Applying Options');
-    setProgress(0, cardMetadataMap.size);
-    updatePhaseBadge('options', 'active', 0);
-    
-    const optionsQueue = new FetchQueue(3);
-    
-    const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
-      return optionsQueue.add(async () => {
+    const metadataPromises = allEntries.map((entry, i) => {
+      return metadataQueue.add(async () => {
         try {
-          const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
-          return { index: idx, card: transformedCard, error: null };
-        } catch (e) {
-          return { index: idx, card: null, error: e.message };
-        }
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          const card = await fetchCardMetadata(entry);
+          return { index: i, card, error: null };
+        } catch (e) { return { index: i, card: null, error: e.message || e.name }; }
       });
     });
     
-    let completedOptions = 0;
-    for (const promise of optionPromises) {
+    let completedMetadata = 0;
+    for (const promise of metadataPromises) {
       const result = await promise;
+      if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
       
       if (result.error) {
         const entry = allEntries[result.index];
         const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
         log(`✕  ${displayName}: ${result.error}`, 'e');
         err++;
-      } else {
-        transformedCards.set(result.index, result.card);
-      }
+      } else { cardMetadataMap.set(result.index, result.card); }
       
-      completedOptions++;
-      setProgress(completedOptions, cardMetadataMap.size);
-      updatePhaseBadge('options', 'active', completedOptions);
+      completedMetadata++;
+      setProgress(completedMetadata, allEntries.length);
+      updatePhaseBadge('metadata', 'active', completedMetadata);
     }
     
-    updatePhaseBadge('options', 'complete', transformedCards.size);
-  } else {
-    for (const [idx, card] of cardMetadataMap.entries()) {
-      transformedCards.set(idx, card);
-    }
-  }
-  
-  setProgressPhase('Retrieving Card Images');
-  setProgress(0, transformedCards.size);
-  updatePhaseBadge('images', 'active', 0);
-  
-  const imageQueue = new FetchQueue(3);
-  
-  const mainIndexes = sections.main.map((_, i) => i);
-  const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
-  
-  const imageFetchData = [];
-  
-  for (const idx of mainIndexes) {
-    const card = transformedCards.get(idx);
-    if (card) {
-      imageFetchData.push({ idx, card, section: 'main' });
-    }
-  }
-  
-  for (const idx of sideIndexes) {
-    const card = transformedCards.get(idx);
-    if (card) {
-      imageFetchData.push({ idx, card, section: 'sideboard' });
-    }
-  }
-  
-  const imagePromises = imageFetchData.map(({ card, section }) => {
-    return imageQueue.add(async () => {
-      try {
-        const imageData = await fetchCardImage(card, selectedSize);
-        return { imageData, section, card, error: null };
-      } catch (e) {
-        return { imageData: null, section, card, error: e.message };
-      }
-    });
-  });
-  
-  let completedImages = 0;
-  for (const promise of imagePromises) {
-    const result = await promise;
+    updatePhaseBadge('metadata', 'complete', cardMetadataMap.size);
+    const transformedCards = new Map();
     
-    if (result.error) {
-      log(`✕  ${result.card.name}: ${result.error}`, 'e');
-      err++;
-    } else {
-      const { imageData, section, card } = result;
+    if (paperOnly || firstPrint) {
+      setProgressPhase('Applying Options');
+      setProgress(0, cardMetadataMap.size);
+      updatePhaseBadge('options', 'active', 0);
       
-      fetchedImages.push({
-        name: imageData.name,
-        blob: imageData.blob,
-        filename: imageData.filename
+      const optionsQueue = new FetchQueue(3);
+      const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
+        return optionsQueue.add(async () => {
+          try {
+            if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+            const transformedCard = await applyCardOptions(card, { paperOnly, firstPrint });
+            return { index: idx, card: transformedCard, error: null };
+          } catch (e) { return { index: idx, card: null, error: e.message || e.name }; }
+        });
       });
       
-      visualDeckData[section].push(imageData);
-      
-      const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
-      const cacheNote = card._fromCache ? ' 💾' : '';
-      const premiumNote = card._usedPremium ? ' ✦ premium' : '';
-      log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${cacheNote}`, card._usedPremium ? 'warn' : card._usedFallback ? 'warn' : 'ok');
-      ok++;
+      let completedOptions = 0;
+      for (const promise of optionPromises) {
+        const result = await promise;
+        if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
+        
+        if (result.error) {
+          const entry = allEntries[result.index];
+          const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
+          log(`✕  ${displayName}: ${result.error}`, 'e');
+          err++;
+        } else { transformedCards.set(result.index, result.card); }
+        
+        completedOptions++;
+        setProgress(completedOptions, cardMetadataMap.size);
+        updatePhaseBadge('options', 'active', completedOptions);
+      }
+      updatePhaseBadge('options', 'complete', transformedCards.size);
+    } else {
+      for (const [idx, card] of cardMetadataMap.entries()) { transformedCards.set(idx, card); }
     }
     
-    completedImages++;
-    setProgress(completedImages, transformedCards.size);
-    updatePhaseBadge('images', 'active', completedImages);
-  }
-  
-  updatePhaseBadge('images', 'complete', ok);
-  
-  setProgress(allEntries.length,allEntries.length);
-  document.getElementById('stats-bar').style.display='flex';
-  document.getElementById('dl-btn').disabled=ok===0;
-  document.getElementById('proxy-generate-btn').disabled=ok===0;
-  
-  if(ok > 0) {
-    sortCards(visualDeckData.main);
-    sortCards(visualDeckData.sideboard);
+    setProgressPhase('Retrieving Card Images');
+    setProgress(0, transformedCards.size);
+    updatePhaseBadge('images', 'active', 0);
     
-    grid.innerHTML = '';
-    grid.style.display = 'grid';
+    const imageQueue = new FetchQueue(3);
+    const mainIndexes = sections.main.map((_, i) => i);
+    const sideIndexes = sections.sideboard.map((_, i) => i + sections.main.length);
+    const imageFetchData = [];
     
-    let animationDelay = 0;
-    const seenCards = new Set();
+    for (const idx of mainIndexes) {
+      const card = transformedCards.get(idx);
+      if (card) imageFetchData.push({ idx, card, section: 'main' });
+    }
+    for (const idx of sideIndexes) {
+      const card = transformedCards.get(idx);
+      if (card) imageFetchData.push({ idx, card, section: 'sideboard' });
+    }
     
-    const allCards = [...visualDeckData.main, ...visualDeckData.sideboard];
-    
-    allCards.forEach(card => {
-      const cardKey = `${card.name}|${card.set}`;
-      
-      if (seenCards.has(cardKey)) return;
-      seenCards.add(cardKey);
-      
-      const tile = document.createElement('div');
-      tile.className = 'card-item';
-      tile.style.opacity = '0';
-      tile.style.transform = 'translateY(20px)';
-      tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
-      
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(card.blob);
-      img.alt = card.name;
-      img.loading = 'lazy';
-      
-      img.onload = () => {
-        URL.revokeObjectURL(img.src);
-      };
-      
-      const overlay = document.createElement('div');
-      overlay.className = 'card-overlay';
-      
-      const overlayInner = document.createElement('div');
-      overlayInner.className = 'card-overlay-inner';
-      
-      const cardName = document.createElement('div');
-      cardName.className = 'card-name';
-      cardName.textContent = card.name;
-      overlayInner.appendChild(cardName);
-      
-      if (card.set) {
-        const setEl = document.createElement('div');
-        setEl.className = 'card-set';
-        setEl.textContent = card.set.toUpperCase();
-        overlayInner.appendChild(setEl);
-      }
-      
-      overlay.appendChild(overlayInner);
-      tile.appendChild(img);
-      tile.appendChild(overlay);
-      tile.style.cursor = 'pointer';
-      
-      if (card.scryfall_uri && isValidScryfallUrl(card.scryfall_uri)) {
-        const open = () => window.open(card.scryfall_uri, '_blank', 'noopener,noreferrer');
-        tile.addEventListener('click', open);
-        tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
-      }
-      
-      grid.appendChild(tile);
-      animationDelay += 0.03;
+    const imagePromises = imageFetchData.map(({ card, section }) => {
+      return imageQueue.add(async () => {
+        try {
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          const imageData = await fetchCardImage(card, selectedSize);
+          return { imageData, section, card, error: null };
+        } catch (e) { return { imageData: null, section, card, error: e.message || e.name }; }
+      });
     });
     
-    // Generate preview AFTER all card animations complete (doesn't block initial render)
-    const totalAnimationTime = animationDelay * 1000; // Convert to ms
-    setTimeout(async () => {
-      await generateVisualPreview();
-      document.getElementById('download-visual-btn').disabled = false;
-    }, totalAnimationTime + 200); // Small buffer after last animation
+    let completedImages = 0;
+    for (const promise of imagePromises) {
+      const result = await promise;
+      if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
+      
+      if (result.error) {
+        log(`✕  ${result.card.name}: ${result.error}`, 'e');
+        err++;
+      } else {
+        const { imageData, section, card } = result;
+        fetchedImages.push({ name: imageData.name, blob: imageData.blob, filename: imageData.filename });
+        visualDeckData[section].push(imageData);
+        const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : '';
+        const cacheNote = card._fromCache ? ' 💾' : '';
+        const premiumNote = card._usedPremium ? ' ✦ premium' : '';
+        log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${cacheNote}`, card._usedPremium ? 'warn' : card._usedFallback ? 'warn' : 'ok');
+        ok++;
+      }
+      
+      completedImages++;
+      setProgress(completedImages, transformedCards.size);
+      updatePhaseBadge('images', 'active', completedImages);
+    }
+    updatePhaseBadge('images', 'complete', ok);
+    
+    setProgress(allEntries.length,allEntries.length);
+    document.getElementById('stats-bar').style.display='flex';
+    document.getElementById('dl-btn').disabled=ok===0;
+    document.getElementById('proxy-generate-btn').disabled=ok===0;
+    
+    if(ok > 0) {
+      sortCards(visualDeckData.main);
+      sortCards(visualDeckData.sideboard);
+      grid.innerHTML = ''; grid.style.display = 'grid';
+      let animationDelay = 0;
+      const seenCards = new Set();
+      const allCards = [...visualDeckData.main, ...visualDeckData.sideboard];
+      
+      allCards.forEach(card => {
+        const cardKey = `${card.name}|${card.set}`;
+        if (seenCards.has(cardKey)) return;
+        seenCards.add(cardKey);
+        
+        const tile = document.createElement('div');
+        tile.className = 'card-item';
+        tile.style.opacity = '0';
+        tile.style.transform = 'translateY(20px)';
+        tile.style.animation = `riseIn 0.5s cubic-bezier(0.2,0,0,1) ${animationDelay}s forwards`;
+        
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(card.blob);
+        img.alt = card.name;
+        img.loading = 'lazy';
+        img.onload = () => URL.revokeObjectURL(img.src);
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'card-overlay';
+        const overlayInner = document.createElement('div');
+        overlayInner.className = 'card-overlay-inner';
+        const cardName = document.createElement('div');
+        cardName.className = 'card-name';
+        cardName.textContent = card.name;
+        overlayInner.appendChild(cardName);
+        
+        if (card.set) {
+          const setEl = document.createElement('div');
+          setEl.className = 'card-set';
+          setEl.textContent = card.set.toUpperCase();
+          overlayInner.appendChild(setEl);
+        }
+        
+        overlay.appendChild(overlayInner);
+        tile.appendChild(img);
+        tile.appendChild(overlay);
+        tile.style.cursor = 'pointer';
+        
+        if (card.scryfall_uri && isValidScryfallUrl(card.scryfall_uri)) {
+          const open = () => window.open(card.scryfall_uri, '_blank', 'noopener,noreferrer');
+          tile.addEventListener('click', open);
+          tile.addEventListener('auxclick', e => { if(e.button === 1) { e.preventDefault(); open(); } });
+        }
+        
+        grid.appendChild(tile);
+        animationDelay += 0.03;
+      });
+      
+      const totalAnimationTime = animationDelay * 1000; 
+      setTimeout(async () => {
+        await generateVisualPreview();
+        document.getElementById('download-visual-btn').disabled = false;
+      }, totalAnimationTime + 200); 
+    }
+  } catch(err) {
+    if(err.name === 'AbortError' || err.message === 'Aborted') {
+      log('⚠ Summoning cancelled by user.', 'warn');
+      setProgressPhase('Cancelled');
+    } else {
+      log(`✕ Error: ${err.message}`, 'e');
+    }
+  } finally {
+    isFetching=false; 
+    fb.innerHTML='✦ &nbsp; Summon Cards';
   }
-  
-  isFetching=false;fb.disabled=false;fb.innerHTML='✦ &nbsp; Summon Cards';
 });
 
 document.getElementById('dl-btn').addEventListener('click',async()=>{
@@ -2017,6 +1770,19 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
 });
 
 async function generateVisualPreview() {
+  const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
+  
+  if (cachedVisualCanvas && cachedVisualTransparent === isTransparent) {
+    const previewCanvas = document.getElementById('visual-preview-canvas');
+    if (previewCanvas) {
+      previewCanvas.width = cachedVisualCanvas.width;
+      previewCanvas.height = cachedVisualCanvas.height;
+      const previewCtx = previewCanvas.getContext('2d', { alpha: true });
+      previewCtx.drawImage(cachedVisualCanvas, 0, 0);
+    }
+    return cachedVisualCanvas;
+  }
+
   const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
   const SIDEBOARD_MAX_PER_STACK = 15;
@@ -2030,17 +1796,10 @@ async function generateVisualPreview() {
   function createStacks(cardList, maxPerStack) {
     const stacks = [];
     const allCards = [];
-    
     cardList.forEach(card => {
-      for (let i = 0; i < card.quantity; i++) {
-        allCards.push(card);
-      }
+      for (let i = 0; i < card.quantity; i++) allCards.push(card);
     });
-    
-    for (let i = 0; i < allCards.length; i += maxPerStack) {
-      stacks.push(allCards.slice(i, i + maxPerStack));
-    }
-    
+    for (let i = 0; i < allCards.length; i += maxPerStack) stacks.push(allCards.slice(i, i + maxPerStack));
     return stacks;
   }
   
@@ -2061,13 +1820,11 @@ async function generateVisualPreview() {
   const sideHeight = sideRows > 0 ? (sideStackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = Math.max(mainHeight, sideHeight);
   
-  // Create canvas for rendering
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d', { alpha: true });
   
-  const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
   if (!isTransparent) {
     const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
     gradient.addColorStop(0, '#130a1e');
@@ -2120,7 +1877,9 @@ async function generateVisualPreview() {
     }
   }
   
-  // Update the preview canvas in the UI
+  cachedVisualCanvas = canvas;
+  cachedVisualTransparent = isTransparent;
+  
   const previewCanvas = document.getElementById('visual-preview-canvas');
   if (previewCanvas) {
     previewCanvas.width = canvasWidth;
@@ -2133,11 +1892,13 @@ async function generateVisualPreview() {
 }
 
 function loadImage(blob) {
+  if (imageNodeCache.has(blob)) return Promise.resolve(imageNodeCache.get(blob));
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
+      imageNodeCache.set(blob, img);
       resolve(img);
     };
     img.onerror = () => {
@@ -2150,7 +1911,9 @@ function loadImage(blob) {
 
 document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
   document.getElementById('transparent-bg-toggle').classList.toggle('active');
-  // No immediate re-render - stays instant and smooth
+  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
+    generateVisualPreview();
+  }
 });
   
 // ── Visual resolution toggle ──────────────────────────────────────────────────
@@ -2204,6 +1967,7 @@ let proxySize = 'a4';
 let proxyGap = 0;
 let proxyUseQty = true;
 let proxyNoBasics = false;
+let proxyRenderTimeout;
 
 const BASIC_LAND_NAMES = new Set(['plains','island','swamp','mountain','forest','wastes','snow-covered plains','snow-covered island','snow-covered swamp','snow-covered mountain','snow-covered forest']);
 
@@ -2217,14 +1981,11 @@ const CARD_H_MM = 88;
 
 function proxyCalcLayout(sizeKey, gapMm) {
   const page = PROXY_PAGE_SIZES[sizeKey];
-  // Fixed grid: A4=3×3, A3=4×4 — cards are always exactly 63×88mm
-  // Margins are derived from the grid (centred), never the other way around
   const cols = sizeKey === 'a4' ? 3 : 4;
   const rows = sizeKey === 'a4' ? 3 : 4;
   return { cols, rows, perPage: cols * rows, page };
 }
 
-// Build the filtered + quantity-expanded flat card list
 function proxyBuildCardList() {
   let source = [...visualDeckData.main, ...visualDeckData.sideboard];
   if (proxyNoBasics) {
@@ -2246,11 +2007,15 @@ function updateProxyLayoutInfo() {
   const gapText = proxyGap === 0 ? 'no spacing' : `${proxyGap} mm gap`;
   document.getElementById('proxy-layout-info').textContent =
     `${page.label} · ${cols} × ${rows} · ${perPage} cards per page · ${total} cards · ${pages} page${pages !== 1 ? 's' : ''} · ${gapText}`;
-  renderProxyPreview(cardList);
+    
+  clearTimeout(proxyRenderTimeout);
+  proxyRenderTimeout = setTimeout(() => {
+    renderProxyPreview(cardList);
+  }, 250);
 }
 
 // ── Preview canvas ────────────────────────────────────────────────────────────
-let proxyPreviewPages = [];  // cached rendered canvases per page
+let proxyPreviewPages = []; 
 let proxyPreviewCurrentPage = 0;
 
 async function renderProxyPreview(cardList) {
@@ -2263,14 +2028,12 @@ async function renderProxyPreview(cardList) {
   const { cols, rows, perPage } = proxyCalcLayout(proxySize, proxyGap);
   const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 1;
 
-  // Reset cache and page cursor
   proxyPreviewPages = [];
   proxyPreviewCurrentPage = 0;
 
-  // Render at 2× the display container width, scaled further by DPR for crisp screens
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
   const PREVIEW_PAD = 16;
-  const TARGET_W = Math.round(1200 * DPR);  // ~1200 logical px before DPR
+  const TARGET_W = Math.round(1200 * DPR);  
   const cardW = Math.floor((TARGET_W - PREVIEW_PAD * 2 - (cols - 1) * (proxyGap * 2)) / cols);
   const cardH = Math.round(cardW * (CARD_H_MM / CARD_W_MM));
   const gap   = Math.round(proxyGap * (cardW / CARD_W_MM));
@@ -2279,7 +2042,6 @@ async function renderProxyPreview(cardList) {
   const cw    = gridW + PREVIEW_PAD * 2;
   const ch    = gridH + PREVIEW_PAD * 2;
 
-  // Render all pages into offscreen canvases
   for (let p = 0; p < totalPages; p++) {
     const oc  = document.createElement('canvas');
     oc.width  = cw;
@@ -2318,14 +2080,12 @@ async function renderProxyPreview(cardList) {
     proxyPreviewPages.push(oc);
   }
 
-  // Show/hide navigation
   if (totalPages > 1) {
     navEl.style.display = 'flex';
   } else {
     navEl.style.display = 'none';
   }
 
-  // Draw page helper
   function showPage(idx) {
     proxyPreviewCurrentPage = idx;
     label.textContent = `${idx + 1} / ${totalPages}`;
@@ -2334,7 +2094,6 @@ async function renderProxyPreview(cardList) {
     nextBtn.style.opacity = idx === totalPages - 1 ? '0.3' : '1';
     nextBtn.style.pointerEvents = idx === totalPages - 1 ? 'none' : 'auto';
 
-    // Fade out → swap → fade in
     canvas.style.opacity = '0';
     setTimeout(() => {
       canvas.width  = proxyPreviewPages[idx].width;
@@ -2344,7 +2103,6 @@ async function renderProxyPreview(cardList) {
     }, 150);
   }
 
-  // Attach nav listeners (replace old ones by cloning)
   const newPrev = prevBtn.cloneNode(true);
   const newNext = nextBtn.cloneNode(true);
   prevBtn.parentNode.replaceChild(newPrev, prevBtn);
@@ -2357,7 +2115,6 @@ async function renderProxyPreview(cardList) {
     if (proxyPreviewCurrentPage < totalPages - 1) showPage(proxyPreviewCurrentPage + 1);
   });
 
-  // Hover styles
   [newPrev, newNext].forEach(btn => {
     btn.addEventListener('mouseenter', () => {
       if (btn.style.pointerEvents !== 'none') {
@@ -2373,7 +2130,9 @@ async function renderProxyPreview(cardList) {
     });
   });
 
-  showPage(0);
+  if (proxyPreviewPages.length > 0) {
+    showPage(0);
+  }
 }
 
 function drawEmptySlot(ctx, x, y, w, h) {
@@ -2386,7 +2145,6 @@ function drawEmptySlot(ctx, x, y, w, h) {
   ctx.setLineDash([]);
 }
 
-// Settings listeners — all call updateProxyLayoutInfo which triggers preview
 document.getElementById('proxy-size-options').addEventListener('click', e => {
   const b = e.target.closest('.toggle');
   if (!b) return;
@@ -2417,7 +2175,6 @@ document.getElementById('proxy-nobasics-toggle').addEventListener('click', () =>
   updateProxyLayoutInfo();
 });
 
-// Blob → base64 dataURL
 function blobToDataURL(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2525,7 +2282,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
     <h3>Luminary</h3>
-    <div class="version">VERSION 3.0</div>
+    <div class="version">VERSION 3.1</div>
     
     <div class="modal-section">
       <h4>Quick Instructions</h4>
@@ -2552,14 +2309,12 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     </div>
     
     <div class="modal-section">
-      <h4>What's New in v3.0</h4>
+      <h4>What's New in v3.1</h4>
       <ul>
-        <li>Print for Proxy — generate a print-ready PDF at true card size (63×88mm)</li>
-        <li>A4 &amp; A3 support with 10mm safe margins for home and shop printers</li>
-        <li>Proxy page preview with full navigation before downloading</li>
-        <li>Repeat by Quantity and Ignore Basic Lands proxy options</li>
-        <li>Visual Decklist improvements — sideboard column with label</li>
-        <li>Smoother UI transitions and emoji-free interface</li>
+        <li>Memory Management — image caching for fast preview switching and proxy generation</li>
+        <li>Cancel Fetches — abort mid-flight requests without freezing the UI</li>
+        <li>Live Preview — transparent background toggle now instantly updates</li>
+        <li>Cache eviction logic properly removes oldest elements rather than a hard wipe</li>
       </ul>
     </div>
     
@@ -2614,27 +2369,22 @@ function activateSecretLair() {
   if (secretLairActive) return;
   secretLairActive = true;
 
-  // Reveal the toggle
   const toggle = document.getElementById('secretlair-toggle');
   const hint   = document.getElementById('secretlair-hint');
   toggle.style.display = 'inline-flex';
   hint.style.display   = 'inline';
 
-  // Fade toggle in smoothly
   toggle.style.opacity = '0';
   toggle.style.transition = 'opacity 0.6s ease 0.3s, border-color 0.3s, background 0.3s, box-shadow 0.3s';
   requestAnimationFrame(() => requestAnimationFrame(() => { toggle.style.opacity = '1'; }));
 
-  // Glimmer the fetch button
   const fb = document.getElementById('fetch-btn');
   fb.classList.add('sl-glimmer');
   setTimeout(() => fb.classList.remove('sl-glimmer'), 2000);
 
-  // Show toast
   showSlothToast();
 }
 
-// Listen for "sloth" typed anywhere outside inputs
 document.addEventListener('keydown', e => {
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
   slothBuffer += e.key.toLowerCase();
@@ -2647,14 +2397,12 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// Toggle on/off — re-fetch cards if results are already loaded
 let usePremium = false;
 document.getElementById('secretlair-toggle').addEventListener('click', () => {
   if (!secretLairActive) return;
   usePremium = !usePremium;
   document.getElementById('secretlair-toggle').classList.toggle('active', usePremium);
 
-  // If cards have already been fetched, re-run the fetch with new variant
   if (fetchedImages.length > 0 && !isFetching) {
     const ta = document.getElementById('card-input');
     if (ta.value.trim()) {
@@ -2663,11 +2411,8 @@ document.getElementById('secretlair-toggle').addEventListener('click', () => {
   }
 });
 
-// Fetch premium version: showcase / borderless / Universes Beyond / Secret Lair — latest wins on overlap
 async function fetchPremiumVersion(card) {
   if (!card || !card.prints_search_uri) return null;
-  
-  // Safely parse and update query parameters
   const urlObj = new URL(card.prints_search_uri);
   urlObj.searchParams.set('unique', 'prints');
   urlObj.searchParams.set('order', 'released');
@@ -2719,9 +2464,7 @@ window.addEventListener('scroll', () => {
   } else {
     infoBtn.classList.remove('hidden');
   }
-  
   clearTimeout(scrollTimeout);
-  
   scrollTimeout = setTimeout(() => {
     if (window.scrollY > 100) {
       infoBtn.classList.add('hidden');
