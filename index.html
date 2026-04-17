@@ -1136,7 +1136,7 @@ function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementBy
 const SCRYFALL_DELAY_MS = 150; 
 let nextFetchTime = 0;
 
-async function rateLimitedFetch(url, options = {}) {
+async function rateLimitedFetch(url, options = {}, retries = 3) {
   options.signal = currentAbortController?.signal;
   const slot = Math.max(nextFetchTime, Date.now());
   nextFetchTime = slot + SCRYFALL_DELAY_MS;
@@ -1153,7 +1153,24 @@ async function rateLimitedFetch(url, options = {}) {
     });
   }
   if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  return fetch(url, options);
+  const res = await fetch(url, options);
+  if (res.status === 429 && retries > 0) {
+    const retryAfter = parseInt(res.headers.get('Retry-After') || '2', 10);
+    console.warn(`[RateLimit] 429 received. Backing off ${retryAfter}s, ${retries} retries left.`);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, retryAfter * 1000);
+      if (options.signal) {
+        options.signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new DOMException('Aborted', 'AbortError'));
+        });
+      }
+    });
+    if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    nextFetchTime = Date.now(); // reset queue slot after back-off
+    return rateLimitedFetch(url, options, retries - 1);
+  }
+  return res;
 }
 
 async function cdnFetch(url, options = {}) {
@@ -1423,10 +1440,16 @@ async function fetchAllPrints(card) {
   urlObj.searchParams.set('unique', 'prints');
   urlObj.searchParams.set('order', 'released');
   urlObj.searchParams.set('dir', 'asc');
-  const res = await rateLimitedFetch(urlObj.toString());
-  if (!res.ok) return null;
-  const data = await res.json();
-  const prints = data.data || null;
+  let allData = [];
+  let nextUrl = urlObj.toString();
+  while (nextUrl) {
+    const res = await rateLimitedFetch(nextUrl);
+    if (!res.ok) break;
+    const data = await res.json();
+    allData = allData.concat(data.data || []);
+    nextUrl = data.has_more ? data.next_page : null;
+  }
+  const prints = allData.length ? allData : null;
   if (card.id && prints) printsCache.set(card.id, prints);
   return prints;
 }
@@ -1454,7 +1477,10 @@ async function applyCardOptions(card, options) {
       const paperPrints = allPrints ? allPrints.filter(c => c.games && c.games.includes('paper')) : [];
       if (paperPrints.length > 0) {
         modifiedCard = paperPrints[0]; usedFallback = true;
-        if (options.firstPrint) allPrints = await fetchAllPrints(modifiedCard);
+        // Reuse cached prints for the replaced card; only fetch if not already cached
+        if (options.firstPrint) {
+          allPrints = printsCache.get(modifiedCard.id) || await fetchAllPrints(modifiedCard);
+        }
       } else {
         throw new Error('No paper printing found');
       }
