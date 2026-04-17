@@ -1418,23 +1418,45 @@ async function fetchCardMetadata(entry) {
 
 async function fetchAllPrints(card) {
   if (!card.prints_search_uri) return null;
-  if (card.id && printsCache.has(card.id)) return printsCache.get(card.id);
+  
+  // THE FIX: Cache by oracle_id so we don't spam the API for basic lands
+  const cacheId = card.oracle_id || card.id;
+  
+  if (cacheId && printsCache.has(cacheId)) {
+    return printsCache.get(cacheId);
+  }
+  
   const urlObj = new URL(card.prints_search_uri);
   urlObj.searchParams.set('unique', 'prints');
   urlObj.searchParams.set('order', 'released');
   urlObj.searchParams.set('dir', 'asc');
+  
   const res = await rateLimitedFetch(urlObj.toString());
   if (!res.ok) return null;
+  
   const data = await res.json();
   const prints = data.data || null;
-  if (card.id && prints) printsCache.set(card.id, prints);
+  
+  if (cacheId && prints) printsCache.set(cacheId, prints);
   return prints;
 }
 
 async function applyCardOptions(card, options) {
+  // 1. Generate the exact cache key for these options
+  const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
+  const variant = (usePremium ? 'premium' : 'default') + optSuffix;
+
+  // 2. THE FIX: Read from cache BEFORE hitting Scryfall's search endpoint
+  const cachedOptionCard = getCachedCard(card.name, card.set, card.number, variant);
+  if (cachedOptionCard) {
+    cachedOptionCard._fromCache = true;
+    return cachedOptionCard;
+  }
+
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
   let allPrints = null;
+  
   if (options.paperOnly || options.firstPrint) { allPrints = await fetchAllPrints(modifiedCard); }
 
   if (options.paperOnly && modifiedCard.games) {
@@ -1455,21 +1477,22 @@ async function applyCardOptions(card, options) {
     const originalEntry = card._originalEntry || {};
     const userSpecifiedMatchingSet = originalEntry.set && originalEntry.set.toLowerCase() === modifiedCard.set.toLowerCase();
     const skipSearch = cardIsFromEarlySet || userSpecifiedMatchingSet;
+    
     if (!skipSearch && allPrints) {
       let candidates = allPrints.filter(c => !c.promo && !c.digital);
       if (options.paperOnly) candidates = candidates.filter(c => c.games && c.games.includes('paper'));
-      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) { modifiedCard = candidates[0]; usedFallback = true; }
+      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) { 
+        modifiedCard = candidates[0]; usedFallback = true; 
+      }
     }
   }
 
   modifiedCard._usedFallback = usedFallback;
-  modifiedCard._fromCache = card._fromCache;
+  modifiedCard._fromCache = false;
   modifiedCard._originalEntry = card._originalEntry;
-  if (!card._fromCache) {
-    const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
-    const variant = (usePremium ? 'premium' : 'default') + optSuffix;
-    setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
-  }
+  
+  // 3. Write to cache so we never do this search again
+  setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
   return modifiedCard;
 }
 
@@ -1594,7 +1617,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       setProgress(0, cardMetadataMap.size);
       updatePhaseBadge('options', 'active', 0);
       
-      const optionsQueue = new FetchQueue(3);
+      const optionsQueue = new FetchQueue(1);
       const optionPromises = Array.from(cardMetadataMap.entries()).map(([idx, card]) => {
         return optionsQueue.add(async () => {
           try {
