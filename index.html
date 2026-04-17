@@ -866,12 +866,23 @@
       <div id="visual-preview-canvas-container" style="background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px; display: flex; justify-content: center;">
         <canvas id="visual-preview-canvas" style="width: min(100%, 920px); height: auto; display: block; border-radius: 4px;"></canvas>
       </div>
-      <div style="margin-top: 16px; display: flex; gap: 12px; justify-content: flex-end; align-items: center;">
-        <button class="option-toggle" id="transparent-bg-toggle">
-          <span class="option-pip"></span>
-          Transparent Background
-        </button>
-        <button class="btn-zip" id="download-visual-btn" disabled>⬇ Download Image</button>
+      <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="card-label" style="margin-bottom: 0;">Export Resolution</div>
+          <div class="toggle-group" id="visual-resolution-options">
+            <button class="toggle active" data-visual-res="1">Full</button>
+            <button class="toggle" data-visual-res="0.75">Large</button>
+            <button class="toggle" data-visual-res="0.5">Medium</button>
+            <button class="toggle" data-visual-res="0.25">Small</button>
+          </div>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="option-toggle" id="transparent-bg-toggle">
+            <span class="option-pip"></span>
+            Transparent Background
+          </button>
+          <button class="btn-zip" id="download-visual-btn" disabled>&#11015; Download Image</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2143,17 +2154,22 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
   // No immediate re-render - stays instant and smooth
 });
   
+// ── Visual resolution toggle ──────────────────────────────────────────────────
+let visualExportScale = 1;
+document.getElementById('visual-resolution-options').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-visual-res]');
+  if (!btn) return;
+  document.querySelectorAll('#visual-resolution-options .toggle').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  visualExportScale = parseFloat(btn.dataset.visualRes);
+});
+
 document.getElementById('download-visual-btn').addEventListener('click', async () => {
   const btn = document.getElementById('download-visual-btn');
   const previewCanvas = document.getElementById('visual-preview-canvas');
-  
-  // Check if transparency setting has changed from the preview
-  const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
-  
-  // Regenerate if transparency changed, otherwise use existing preview
+
   let canvas;
   if (previewCanvas && previewCanvas.width > 0) {
-    // Re-generate with current transparency setting
     btn.disabled = true;
     btn.textContent = 'Generating…';
     canvas = await generateVisualPreview();
@@ -2162,8 +2178,19 @@ document.getElementById('download-visual-btn').addEventListener('click', async (
   } else {
     canvas = previewCanvas;
   }
-  
-  canvas.toBlob((blob) => {
+
+  // Apply export resolution scale
+  let exportCanvas = canvas;
+  if (visualExportScale !== 1) {
+    const w = Math.round(canvas.width * visualExportScale);
+    const h = Math.round(canvas.height * visualExportScale);
+    exportCanvas = document.createElement('canvas');
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    exportCanvas.getContext('2d').drawImage(canvas, 0, 0, w, h);
+  }
+
+  exportCanvas.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `visual-decklist-${Date.now()}.png`;
