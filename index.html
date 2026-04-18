@@ -776,6 +776,37 @@
     border-color: #f6c87a !important;
     box-shadow: 0 0 6px rgba(246,200,122,0.8) !important;
   }
+
+  /* ── Bulk DB status indicator ── */
+  #bulk-db-status {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: rgba(156,140,185,0.6);
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    background: rgba(42,18,63,0.3);
+    border: 1px solid rgba(156,140,185,0.1);
+  }
+  #bulk-db-status .db-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+    background: rgba(156,140,185,0.4);
+  }
+  #bulk-db-status.db-ok   { border-color: rgba(100,200,120,0.2); }
+  #bulk-db-status.db-ok   .db-dot { background: #4caf7d; box-shadow: 0 0 6px rgba(76,175,125,0.6); }
+  #bulk-db-status.db-warn { border-color: rgba(246,200,122,0.25); }
+  #bulk-db-status.db-warn .db-dot { background: #f6c87a; box-shadow: 0 0 6px rgba(246,200,122,0.5); }
+  #bulk-db-status.db-none { border-color: rgba(232,149,109,0.2); }
+  #bulk-db-status.db-none .db-dot { background: rgba(232,149,109,0.7); }
+  #bulk-db-status a.db-refresh {
+    margin-left: auto; color: rgba(198,182,221,0.5); text-decoration: none;
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer;
+    background: none; border: none; padding: 0; font-family: inherit;
+  }
+  #bulk-db-status a.db-refresh:hover { color: var(--orchid); }
 </style>
 </head>
 <body>
@@ -836,6 +867,11 @@
         <span style="background: linear-gradient(90deg, #f6c87a, #e8956d, #c97dd4, #7ab8f6); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">Premium Prints</span>
       </button>
       <span class="option-hint" id="secretlair-hint" style="display:none;">Showcase, Borderless, Universes Beyond &amp; Secret Lair</span>
+    </div>
+    <div id="bulk-db-status">
+      <span class="db-dot"></span>
+      <span id="bulk-db-label">Card database not loaded</span>
+      <button class="db-refresh" id="bulk-db-refresh" onclick="triggerBulkRefresh()" title="Re-download from Scryfall">↻ Refresh</button>
     </div>
   </div>
 
@@ -1106,6 +1142,17 @@ document.getElementById('paper-toggle').addEventListener('click',()=>{
   document.getElementById('paper-toggle').classList.toggle('active',paperOnly);
 });
 
+// Check for local database on page load and show status
+(async () => {
+  try {
+    const mRes = await fetch('./data/bulk_manifest.json', { cache: 'no-cache' });
+    if (mRes.ok) {
+      const manifest = await mRes.json();
+      updateBulkDbStatusFromManifest(manifest);
+    }
+  } catch (_) { /* no local db yet — status bar stays hidden until First Print/Paper Only used */ }
+})();
+
 document.getElementById('firstprint-toggle').addEventListener('click',()=>{
   firstPrint=!firstPrint;
   document.getElementById('firstprint-toggle').classList.toggle('active',firstPrint);
@@ -1180,6 +1227,168 @@ async function cdnFetch(url, options = {}) {
 
 // ── In-memory prints cache ────────────────────────────────────────────────────
 const printsCache = new Map();
+
+// ── Bulk Data Index ────────────────────────────────────────────────────────────
+// Loaded once per session when First Print or Paper Only is first used.
+// Replaces per-card fetchAllPrints() API calls with local index lookups,
+// eliminating the main source of 429 rate-limit errors for these options.
+let bulkDataIndex = null;      // Map<oracle_id, Card[]> sorted released_at ASC
+let bulkDataLoadPromise = null;
+
+// ── Bulk DB status UI helpers ─────────────────────────────────────────────────
+function setBulkDbStatus(state, label) {
+  const el = document.getElementById('bulk-db-status');
+  const lbl = document.getElementById('bulk-db-label');
+  if (!el || !lbl) return;
+  el.style.display = 'flex';
+  el.className = '';
+  el.classList.add(state); // db-ok | db-warn | db-none
+  lbl.textContent = label;
+}
+
+function updateBulkDbStatusFromManifest(manifest) {
+  if (!manifest) { setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py'); return; }
+  const updated = new Date(manifest.local_updated_at);
+  const ageDays = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
+  const ageStr  = ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`;
+  const records = manifest.record_count ? ` · ${(manifest.record_count / 1000).toFixed(0)}k cards` : '';
+  if (ageDays > 14) {
+    setBulkDbStatus('db-warn', `Local database updated ${ageStr}${records} — consider refreshing`);
+  } else {
+    setBulkDbStatus('db-ok', `Local database updated ${ageStr}${records}`);
+  }
+}
+
+// Called by the Refresh button — wipes the cached index and re-downloads from Scryfall
+let bulkRefreshInProgress = false;
+async function triggerBulkRefresh() {
+  if (bulkRefreshInProgress) return;
+  bulkRefreshInProgress = true;
+  bulkDataIndex = null;
+  bulkDataLoadPromise = null;
+  setBulkDbStatus('db-none', 'Downloading from Scryfall…');
+  try {
+    await ensureBulkData((msg, progress) => {
+      const pct = progress >= 0 ? ` (${Math.round(progress * 100)}%)` : '';
+      setBulkDbStatus('db-none', msg + pct);
+    }, /* forceRemote= */ true);
+    setBulkDbStatus('db-ok', 'Database refreshed from Scryfall');
+  } catch (e) {
+    setBulkDbStatus('db-warn', `Refresh failed: ${e.message}`);
+  } finally {
+    bulkRefreshInProgress = false;
+  }
+}
+
+async function ensureBulkData(onProgress, forceRemote = false) {
+  if (bulkDataIndex) return bulkDataIndex;
+  if (bulkDataLoadPromise) return bulkDataLoadPromise;
+
+  bulkDataLoadPromise = (async () => {
+    // ── Path A: local file served alongside the HTML ───────────────────────
+    // Run update_bulk_data.py once to populate data/prints_index.json.
+    // Subsequent page loads use this file — no Scryfall API calls needed.
+    if (!forceRemote) {
+      try {
+        // Check manifest first so we can show the age indicator even before parsing
+        let manifest = null;
+        try {
+          const mRes = await fetch('./data/bulk_manifest.json', { cache: 'no-cache' });
+          if (mRes.ok) manifest = await mRes.json();
+        } catch (_) { /* manifest missing is fine */ }
+
+        onProgress?.('Loading local card database…', -1);
+        const localRes = await fetch('./data/prints_index.json');
+        if (localRes.ok) {
+          const contentLength = parseInt(localRes.headers.get('content-length') || '0', 10);
+          const reader = localRes.body.getReader();
+          const chunks = [];
+          let received = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+            if (contentLength > 0) onProgress?.('Loading local card database…', received / contentLength);
+          }
+          onProgress?.('Parsing card data…', -1);
+          const merged = new Uint8Array(received);
+          let offset = 0;
+          for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+          const cards = JSON.parse(new TextDecoder().decode(merged));
+          onProgress?.('Building card index…', -1);
+          const index = new Map();
+          for (const card of cards) {
+            if (!card.oracle_id) continue;
+            if (!index.has(card.oracle_id)) index.set(card.oracle_id, []);
+            index.get(card.oracle_id).push(card);
+          }
+          for (const group of index.values()) {
+            group.sort((a, b) => (a.released_at || '').localeCompare(b.released_at || ''));
+          }
+          bulkDataIndex = index;
+          onProgress?.('Card database ready', 1);
+          updateBulkDbStatusFromManifest(manifest);
+          return index;
+        }
+      } catch (_) {
+        // Local file missing or failed — fall through to remote download
+      }
+    }
+
+    // ── Path B: download from Scryfall (first-time setup or forced refresh) ─
+    setBulkDbStatus('db-none', 'Downloading from Scryfall…');
+    onProgress?.('Fetching bulk data manifest…', -1);
+    const manifestRes = await fetch('https://api.scryfall.com/bulk-data');
+    if (!manifestRes.ok) throw new Error('Could not fetch Scryfall bulk-data manifest');
+    const manifest = await manifestRes.json();
+    const entry = (manifest.data || []).find(e => e.type === 'default_cards');
+    if (!entry?.download_uri) throw new Error('default_cards bulk entry not found');
+
+    const fileRes = await fetch(entry.download_uri);
+    if (!fileRes.ok) throw new Error('Could not download bulk data file');
+    const contentLength = parseInt(fileRes.headers.get('content-length') || '0', 10);
+    const reader = fileRes.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (contentLength > 0) onProgress?.('Downloading card database…', received / contentLength);
+    }
+
+    onProgress?.('Parsing card data…', -1);
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+    const cards = JSON.parse(new TextDecoder().decode(merged));
+
+    onProgress?.('Building card index…', -1);
+    const index = new Map();
+    for (const card of cards) {
+      if (!card.oracle_id) continue;
+      if (!index.has(card.oracle_id)) index.set(card.oracle_id, []);
+      index.get(card.oracle_id).push(card);
+    }
+    for (const group of index.values()) {
+      group.sort((a, b) => (a.released_at || '').localeCompare(b.released_at || ''));
+    }
+    bulkDataIndex = index;
+    onProgress?.('Card database ready', 1);
+    setBulkDbStatus('db-warn', 'Using Scryfall download — run update_bulk_data.py to cache locally');
+    return index;
+  })();
+
+  return bulkDataLoadPromise;
+}
+
+// Look up all printings for a card from the bulk index (instant, no API call)
+function getPrintsFromBulk(card) {
+  if (!bulkDataIndex || !card.oracle_id) return null;
+  return bulkDataIndex.get(card.oracle_id) || null;
+}
 
 // Pure concurrency queue (timing is entirely handled by rateLimitedFetch above)
 class FetchQueue {
@@ -1459,7 +1668,7 @@ async function applyCardOptions(card, options) {
   const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
   const variant = (usePremium ? 'premium' : 'default') + optSuffix;
 
-  // 2. Read from cache FIRST to prevent redundant API calls
+  // 2. Read from card cache first — no API work needed
   const cachedOptionCard = getCachedCard(card.name, card.set, null, variant);
   if (cachedOptionCard) {
     cachedOptionCard._fromCache = true;
@@ -1468,18 +1677,19 @@ async function applyCardOptions(card, options) {
 
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
-  let allPrints = null;
-  
-  if (options.paperOnly || options.firstPrint) { allPrints = await fetchAllPrints(modifiedCard); }
+
+  // 3. Resolve prints — bulk index is the primary source (zero API calls).
+  //    fetchAllPrints() is a safety fallback only if bulk data failed to load.
+  let allPrints = getPrintsFromBulk(card) || await fetchAllPrints(card);
 
   if (options.paperOnly && modifiedCard.games) {
     if (!modifiedCard.games.includes('paper')) {
       const paperPrints = allPrints ? allPrints.filter(c => c.games && c.games.includes('paper')) : [];
       if (paperPrints.length > 0) {
         modifiedCard = paperPrints[0]; usedFallback = true;
-        // Reuse cached prints for the replaced card; only fetch if not already cached
+        // Re-resolve prints for the replaced card using bulk index first
         if (options.firstPrint) {
-          allPrints = printsCache.get(modifiedCard.id) || await fetchAllPrints(modifiedCard);
+          allPrints = getPrintsFromBulk(modifiedCard) || printsCache.get(modifiedCard.id) || await fetchAllPrints(modifiedCard);
         }
       } else {
         throw new Error('No paper printing found');
@@ -1503,10 +1713,9 @@ async function applyCardOptions(card, options) {
   modifiedCard._usedFallback = usedFallback;
   modifiedCard._fromCache = false;
   modifiedCard._originalEntry = card._originalEntry;
-  
-  // 3. Save the result so we never have to run this heavy search again
+
+  // 4. Cache result so subsequent runs for the same card/options are instant
   setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
-  
   return modifiedCard;
 }
 
@@ -1627,6 +1836,21 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     const transformedCards = new Map();
     
     if (paperOnly || firstPrint) {
+      // Download the Scryfall bulk data file once so all prints lookups are local.
+      // This completely replaces the per-card API calls that were causing 429 errors.
+      setProgressPhase('Downloading Card Database');
+      setProgress(0, 100);
+      const phaseEl = document.getElementById('progress-phase');
+      try {
+        await ensureBulkData((msg, progress) => {
+          if (phaseEl) phaseEl.textContent = msg;
+          if (progress >= 0) setProgress(Math.round(progress * 100), 100);
+        });
+        log('✓  Card database loaded — prints lookups are now local', 'ok');
+      } catch (bulkErr) {
+        log(`⚠  Bulk data unavailable (${bulkErr.message}). Falling back to API — rate limits may apply.`, 'warn');
+      }
+
       setProgressPhase('Applying Options');
       setProgress(0, cardMetadataMap.size);
       updatePhaseBadge('options', 'active', 0);
