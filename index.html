@@ -1324,8 +1324,10 @@ async function ensureBulkData(onProgress, forceRemote = false) {
           updateBulkDbStatusFromManifest(manifest);
           return index;
         }
-      } catch (_) {
-        // Local file missing or failed — fall through to remote download
+      } catch (localErr) {
+        // Local file missing or failed — warn and fall through to remote download
+        console.warn('[Luminary] Local prints_index.json not found or failed to load:', localErr?.message || localErr);
+        setBulkDbStatus('db-warn', 'Local database missing — downloading from Scryfall (run update_bulk_data.py to avoid this)');
       }
     }
 
@@ -1356,10 +1358,25 @@ async function ensureBulkData(onProgress, forceRemote = false) {
     const merged = new Uint8Array(received);
     let offset = 0;
     for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
-    // Format v2: dict keyed by oracle_id, values are pre-sorted compact arrays
-    const dict = JSON.parse(new TextDecoder().decode(merged));
+    // Scryfall returns a raw array of full card objects — build compact index
+    // the same way update_bulk_data.py does (oracle_id → sorted compact arrays)
+    const cards = JSON.parse(new TextDecoder().decode(merged));
     onProgress?.('Building card index…', -1);
-    const index = new Map(Object.entries(dict));
+    const GBITS = {paper: 1, mtgo: 2, arena: 4};
+    const rawIdx = {};
+    for (const c of cards) {
+      const oid = c.oracle_id;
+      if (!oid || !c.id) continue;
+      const g = (c.games || []).reduce((b, x) => b | (GBITS[x] || 0), 0);
+      const f = (c.digital ? 1 : 0) | (c.promo ? 2 : 0);
+      const d = (c.released_at || '1993-01-01').replace(/-/g, '');
+      if (!rawIdx[oid]) rawIdx[oid] = [];
+      rawIdx[oid].push([c.id, c.set || '', d, g, f]);
+    }
+    for (const entries of Object.values(rawIdx)) {
+      entries.sort((a, b) => a[2].localeCompare(b[2]));
+    }
+    const index = new Map(Object.entries(rawIdx));
     bulkDataIndex = index;
     onProgress?.('Card database ready', 1);
     setBulkDbStatus('db-warn', 'Using Scryfall download — run update_bulk_data.py to cache locally');
@@ -1661,24 +1678,38 @@ async function fetchCardMetadata(entry) {
 }
 
 async function fetchAllPrints(card) {
+  // This is a last-resort fallback only used when the local bulk index is unavailable.
+  // NOTE: Scryfall's /cards/search endpoint blocks cross-origin requests from some
+  // hosting origins (e.g. GitHub Pages). Run update_bulk_data.py to build the local
+  // index and avoid this path entirely.
   if (!card.prints_search_uri) return null;
   if (card.id && printsCache.has(card.id)) return printsCache.get(card.id);
-  const urlObj = new URL(card.prints_search_uri);
-  urlObj.searchParams.set('unique', 'prints');
-  urlObj.searchParams.set('order', 'released');
-  urlObj.searchParams.set('dir', 'asc');
-  let allData = [];
-  let nextUrl = urlObj.toString();
-  while (nextUrl) {
-    const res = await rateLimitedFetch(nextUrl);
-    if (!res.ok) break;
-    const data = await res.json();
-    allData = allData.concat(data.data || []);
-    nextUrl = data.has_more ? data.next_page : null;
+  try {
+    const urlObj = new URL(card.prints_search_uri);
+    urlObj.searchParams.set('unique', 'prints');
+    urlObj.searchParams.set('order', 'released');
+    urlObj.searchParams.set('dir', 'asc');
+    let allData = [];
+    let nextUrl = urlObj.toString();
+    while (nextUrl) {
+      const res = await rateLimitedFetch(nextUrl);
+      if (!res.ok) break;
+      const data = await res.json();
+      allData = allData.concat(data.data || []);
+      nextUrl = data.has_more ? data.next_page : null;
+    }
+    const prints = allData.length ? allData : null;
+    if (card.id && prints) printsCache.set(card.id, prints);
+    return prints;
+  } catch (e) {
+    // Likely a CORS error from /cards/search — return null so the caller
+    // falls back to the original card rather than crashing.
+    if (!fetchAllPrints._corsWarned) {
+      fetchAllPrints._corsWarned = true;
+      console.warn('[Luminary] fetchAllPrints blocked (likely CORS). Add data/prints_index.json to avoid API fallback.');
+    }
+    return null;
   }
-  const prints = allData.length ? allData : null;
-  if (card.id && prints) printsCache.set(card.id, prints);
-  return prints;
 }
 
 async function applyCardOptions(card, options) {
