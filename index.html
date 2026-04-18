@@ -1251,7 +1251,7 @@ function updateBulkDbStatusFromManifest(manifest) {
   const updated = new Date(manifest.local_updated_at);
   const ageDays = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
   const ageStr  = ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`;
-  const records = manifest.record_count ? ` · ${(manifest.record_count / 1000).toFixed(0)}k cards` : '';
+  const records = manifest.oracle_count ? ` · ${(manifest.oracle_count / 1000).toFixed(0)}k cards` : '';
   if (ageDays > 14) {
     setBulkDbStatus('db-warn', `Local database updated ${ageStr}${records} — consider refreshing`);
   } else {
