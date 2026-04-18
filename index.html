@@ -1315,17 +1315,10 @@ async function ensureBulkData(onProgress, forceRemote = false) {
           const merged = new Uint8Array(received);
           let offset = 0;
           for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
-          const cards = JSON.parse(new TextDecoder().decode(merged));
+          // Format v2: dict keyed by oracle_id, values are pre-sorted compact arrays
+          const dict = JSON.parse(new TextDecoder().decode(merged));
           onProgress?.('Building card index…', -1);
-          const index = new Map();
-          for (const card of cards) {
-            if (!card.oracle_id) continue;
-            if (!index.has(card.oracle_id)) index.set(card.oracle_id, []);
-            index.get(card.oracle_id).push(card);
-          }
-          for (const group of index.values()) {
-            group.sort((a, b) => (a.released_at || '').localeCompare(b.released_at || ''));
-          }
+          const index = new Map(Object.entries(dict));
           bulkDataIndex = index;
           onProgress?.('Card database ready', 1);
           updateBulkDbStatusFromManifest(manifest);
@@ -1363,18 +1356,10 @@ async function ensureBulkData(onProgress, forceRemote = false) {
     const merged = new Uint8Array(received);
     let offset = 0;
     for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
-    const cards = JSON.parse(new TextDecoder().decode(merged));
-
+    // Format v2: dict keyed by oracle_id, values are pre-sorted compact arrays
+    const dict = JSON.parse(new TextDecoder().decode(merged));
     onProgress?.('Building card index…', -1);
-    const index = new Map();
-    for (const card of cards) {
-      if (!card.oracle_id) continue;
-      if (!index.has(card.oracle_id)) index.set(card.oracle_id, []);
-      index.get(card.oracle_id).push(card);
-    }
-    for (const group of index.values()) {
-      group.sort((a, b) => (a.released_at || '').localeCompare(b.released_at || ''));
-    }
+    const index = new Map(Object.entries(dict));
     bulkDataIndex = index;
     onProgress?.('Card database ready', 1);
     setBulkDbStatus('db-warn', 'Using Scryfall download — run update_bulk_data.py to cache locally');
@@ -1384,10 +1369,31 @@ async function ensureBulkData(onProgress, forceRemote = false) {
   return bulkDataLoadPromise;
 }
 
+// Decode a compact bulk entry [id, set, YYYYMMDD, gamesBits, flagsBits]
+// into a card-like object compatible with applyCardOptions filters.
+// Image URLs are reconstructed by getImg() from the card id — no stored URLs needed.
+function expandBulkEntry([id, set, dateStr, gamesBits, flagsBits]) {
+  const games = [];
+  if (gamesBits & 1) games.push('paper');
+  if (gamesBits & 2) games.push('mtgo');
+  if (gamesBits & 4) games.push('arena');
+  return {
+    id,
+    set,
+    released_at: `${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}`,
+    games,
+    digital:  !!(flagsBits & 1),
+    promo:    !!(flagsBits & 2),
+    // name, oracle_id, _originalEntry carried over in applyCardOptions
+  };
+}
+
 // Look up all printings for a card from the bulk index (instant, no API call)
 function getPrintsFromBulk(card) {
   if (!bulkDataIndex || !card.oracle_id) return null;
-  return bulkDataIndex.get(card.oracle_id) || null;
+  const raw = bulkDataIndex.get(card.oracle_id);
+  if (!raw || !raw.length) return null;
+  return raw.map(expandBulkEntry);
 }
 
 // Pure concurrency queue (timing is entirely handled by rateLimitedFetch above)
@@ -1545,7 +1551,19 @@ function parseNamesWithSections(raw){
   return sections;
 }
 
-function getImg(card,size){if(card.image_uris)return card.image_uris[size]||null;if(card.card_faces?.[0]?.image_uris)return card.card_faces[0].image_uris[size]||null;return null;}
+function getImg(card, size) {
+  // Explicit image_uris present (API-fetched cards)
+  if (card.image_uris) return card.image_uris[size] || null;
+  // DFC with per-face image_uris (API-fetched)
+  if (card.card_faces?.[0]?.image_uris) return card.card_faces[0].image_uris[size] || null;
+  // Bulk-data cards: reconstruct from Scryfall's deterministic URL pattern.
+  // Pattern: https://cards.scryfall.io/{size}/front/{id[0]}/{id[1]}/{id}.{ext}
+  if (card.id) {
+    const ext = size === 'png' ? 'png' : 'jpg';
+    return `https://cards.scryfall.io/${size}/front/${card.id[0]}/${card.id[1]}/${card.id}.${ext}`;
+  }
+  return null;
+}
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
@@ -1709,6 +1727,14 @@ async function applyCardOptions(card, options) {
       if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) { modifiedCard = candidates[0]; usedFallback = true; }
     }
   }
+
+  // Bulk-data cards only have id/set/games/promo/digital — carry over display
+  // fields from the original API-fetched card so the rest of the app works.
+  if (!modifiedCard.name)      modifiedCard.name      = card.name;
+  if (!modifiedCard.oracle_id) modifiedCard.oracle_id = card.oracle_id;
+  if (!modifiedCard.type_line) modifiedCard.type_line = card.type_line || '';
+  if (!modifiedCard.cmc)       modifiedCard.cmc       = card.cmc || 0;
+  if (!modifiedCard.scryfall_uri) modifiedCard.scryfall_uri = card.scryfall_uri;
 
   modifiedCard._usedFallback = usedFallback;
   modifiedCard._fromCache = false;
