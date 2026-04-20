@@ -1251,7 +1251,7 @@ function updateBulkDbStatusFromManifest(manifest) {
   const updated = new Date(manifest.local_updated_at);
   const ageDays = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
   const ageStr  = ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`;
-  const records = manifest.oracle_count ? ` · ${(manifest.oracle_count / 1000).toFixed(0)}k cards` : '';
+  const records = manifest.record_count ? ` · ${(manifest.record_count / 1000).toFixed(0)}k cards` : '';
   if (ageDays > 14) {
     setBulkDbStatus('db-warn', `Local database updated ${ageStr}${records} — consider refreshing`);
   } else {
@@ -1772,7 +1772,8 @@ async function applyCardOptions(card, options) {
   modifiedCard._originalEntry = card._originalEntry;
 
   // 4. Cache result so subsequent runs for the same card/options are instant
-  setCachedCard(modifiedCard.name, modifiedCard.set, null, modifiedCard, variant);
+  // Key on the ORIGINAL card's name+set so the read (card.name, card.set) always matches the write.
+  setCachedCard(card.name, card.set, null, modifiedCard, variant);
   return modifiedCard;
 }
 
