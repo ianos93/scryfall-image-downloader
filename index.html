@@ -1220,9 +1220,36 @@ async function rateLimitedFetch(url, options = {}, retries = 3) {
   return res;
 }
 
-async function cdnFetch(url, options = {}) {
+async function cdnFetch(url, options = {}, retries = 3) {
   options.signal = currentAbortController?.signal;
-  return fetch(url, options);
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      // Exponential back-off: 500ms, 1000ms, 2000ms
+      const backoff = Math.min(500 * Math.pow(2, attempt - 1), 4000);
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(resolve, backoff);
+        if (options.signal) options.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted','AbortError')); });
+      });
+      if (options.signal?.aborted) throw new DOMException('Aborted','AbortError');
+    }
+    try {
+      const res = await fetch(url, options);
+      // Retry on 429 or 5xx server errors; pass everything else through
+      if (res.status === 429 || res.status >= 500) {
+        const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+        if (retryAfter > 0) await new Promise(r => setTimeout(r, retryAfter * 1000));
+        lastErr = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (e.name === 'AbortError') throw e; // never retry an abort
+      lastErr = e;
+      // Continue to retry on network errors (ERR_FAILED, timeout, etc.)
+    }
+  }
+  throw lastErr || new Error('cdnFetch failed after retries');
 }
 
 // ── In-memory prints cache ────────────────────────────────────────────────────
