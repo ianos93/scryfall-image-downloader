@@ -639,14 +639,19 @@
     backdrop-filter: blur(0px);
     -webkit-backdrop-filter: blur(0px);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    overflow-y: auto;
     z-index: 1000;
-    padding: 20px;
+    padding: 40px 20px;
     opacity: 0;
     pointer-events: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156,140,185,0.2) transparent;
   }
+  .modal::-webkit-scrollbar { width: 5px; }
+  .modal::-webkit-scrollbar-thumb { background: rgba(156,140,185,0.2); border-radius: 3px; }
   .modal.active {
     background: rgba(19,10,30,0.85);
     backdrop-filter: blur(8px);
@@ -661,19 +666,11 @@
     padding: 32px;
     max-width: 680px;
     width: 100%;
-    max-height: 88vh;
-    overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     position: relative;
     transform: scale(0.9) translateY(-20px);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(156,140,185,0.3) transparent;
   }
-  .modal-content::-webkit-scrollbar { width: 5px; }
-  .modal-content::-webkit-scrollbar-track { background: transparent; }
-  .modal-content::-webkit-scrollbar-thumb { background: rgba(156,140,185,0.25); border-radius: 3px; }
-  .modal-content::-webkit-scrollbar-thumb:hover { background: rgba(156,140,185,0.45); }
   .modal.active .modal-content {
     transform: scale(1) translateY(0);
   }
@@ -2720,6 +2717,7 @@ const infoModal = document.getElementById('info-modal');
 
 infoBtn.addEventListener('click', () => {
   infoModal.classList.add('active');
+  document.body.style.overflow = 'hidden';
   populateCacheBreakdown();
 });
 
@@ -2852,12 +2850,12 @@ async function fetchPremiumVersion(card) {
 }
 
 document.getElementById('modal-close').addEventListener('click', () => {
-  infoModal.classList.remove('active');
+  infoModal.classList.remove('active'); document.body.style.overflow = '';
 });
 
 infoModal.addEventListener('click', (e) => {
   if (e.target.id === 'info-modal') {
-    infoModal.classList.remove('active');
+    infoModal.classList.remove('active'); document.body.style.overflow = '';
   }
 });
 
