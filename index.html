@@ -1193,7 +1193,6 @@ async function rateLimitedFetch(url, options = {}, retries = 3) {
       }
     });
     if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    nextFetchTime = Date.now(); // reset queue slot after back-off
     return rateLimitedFetch(url, options, retries - 1);
   }
   return res;
@@ -1654,12 +1653,24 @@ async function fetchCardMetadata(entry) {
 
   if (res.ok) { card = data; } 
   else {
+    // Prevent fallback cascade if we are being rate-limited or the server is down
+    if (res.status === 429 || res.status >= 500) {
+      throw new Error(data.details || `HTTP ${res.status} Error`);
+    }
+
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
       const res2 = await rateLimitedFetch(url2, { });
       const data2 = await res2.json();
-      if (res2.ok) card = data2;
+      
+      if (res2.ok) {
+        card = data2;
+      } else if (res2.status === 429 || res2.status >= 500) {
+        // Prevent cascade on the second attempt as well
+        throw new Error(data2.details || `HTTP ${res2.status} Error`);
+      }
     }
+    
     if (!card && entry.name && (entry.set || entry.number)) {
       const res3 = await rateLimitedFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
       const data3 = await res3.json();
@@ -1681,6 +1692,7 @@ async function fetchCardMetadata(entry) {
   setCachedCard(entry.name, entry.set, entry.number, card, variant);
   return card;
 }
+
 
 async function fetchAllPrints(card) {
   // This is a last-resort fallback only used when the local bulk index is unavailable.
