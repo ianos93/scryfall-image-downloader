@@ -1167,6 +1167,7 @@ async function rateLimitedFetch(url, options = {}, retries = 3) {
   const slot = Math.max(nextFetchTime, Date.now());
   nextFetchTime = slot + SCRYFALL_DELAY_MS;
   const delay = slot - Date.now();
+  
   if (delay > 0) {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(resolve, delay);
@@ -1179,7 +1180,24 @@ async function rateLimitedFetch(url, options = {}, retries = 3) {
     });
   }
   if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-  const res = await fetch(url, options);
+
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (e) {
+    // Catch CORS network errors caused by CDN rate-limiting
+    if (e.name === 'TypeError' && retries > 0) {
+      console.warn(`[RateLimit/CORS] Network error caught for ${url}. Backing off 2s, ${retries} retries left.`);
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 2000);
+        if (options.signal) options.signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
+      });
+      if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      return rateLimitedFetch(url, options, retries - 1);
+    }
+    throw e;
+  }
+
   if (res.status === 429 && retries > 0) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '2', 10);
     console.warn(`[RateLimit] 429 received. Backing off ${retryAfter}s, ${retries} retries left.`);
@@ -1644,7 +1662,11 @@ function sortCards(cardList) {
 async function fetchCardMetadata(entry) {
   const variant = usePremium ? 'premium' : 'default';
   const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
-  if (cachedCard) { cachedCard._fromCache = true; return cachedCard; }
+  if (cachedCard) { 
+    cachedCard._fromCache = true; 
+    cachedCard._originalEntry = entry; // <--- FIX: Overwrite cached quantity with current request
+    return cachedCard; 
+  }
   
   let card = null, usedFallback = false;
   const url = buildUrl(entry);
@@ -1653,7 +1675,6 @@ async function fetchCardMetadata(entry) {
 
   if (res.ok) { card = data; } 
   else {
-    // Prevent fallback cascade if we are being rate-limited or the server is down
     if (res.status === 429 || res.status >= 500) {
       throw new Error(data.details || `HTTP ${res.status} Error`);
     }
@@ -1662,11 +1683,9 @@ async function fetchCardMetadata(entry) {
     if (url2 !== url) {
       const res2 = await rateLimitedFetch(url2, { });
       const data2 = await res2.json();
-      
       if (res2.ok) {
         card = data2;
       } else if (res2.status === 429 || res2.status >= 500) {
-        // Prevent cascade on the second attempt as well
         throw new Error(data2.details || `HTTP ${res2.status} Error`);
       }
     }
@@ -1692,7 +1711,6 @@ async function fetchCardMetadata(entry) {
   setCachedCard(entry.name, entry.set, entry.number, card, variant);
   return card;
 }
-
 
 async function fetchAllPrints(card) {
   // This is a last-resort fallback only used when the local bulk index is unavailable.
@@ -1730,22 +1748,19 @@ async function fetchAllPrints(card) {
 }
 
 async function applyCardOptions(card, options) {
-  // 1. Generate the exact cache variant key based on selected options
   const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
   const variant = (usePremium ? 'premium' : 'default') + optSuffix;
 
-  // 2. Read from card cache first — no API work needed
   const cachedOptionCard = getCachedCard(card.name, card.set, null, variant);
   if (cachedOptionCard) {
     cachedOptionCard._fromCache = true;
+    cachedOptionCard._originalEntry = card._originalEntry; // <--- FIX: Ensure options caching passes quantity forward
     return cachedOptionCard;
   }
 
   let modifiedCard = card;
   let usedFallback = card._usedFallback || false;
 
-  // 3. Resolve prints — bulk index is the primary source (zero API calls).
-  //    fetchAllPrints() is a safety fallback only if bulk data failed to load.
   let allPrints = getPrintsFromBulk(card) || await fetchAllPrints(card);
 
   if (options.paperOnly && modifiedCard.games) {
@@ -1753,7 +1768,6 @@ async function applyCardOptions(card, options) {
       const paperPrints = allPrints ? allPrints.filter(c => c.games && c.games.includes('paper')) : [];
       if (paperPrints.length > 0) {
         modifiedCard = paperPrints[0]; usedFallback = true;
-        // Re-resolve prints for the replaced card using bulk index first
         if (options.firstPrint) {
           allPrints = getPrintsFromBulk(modifiedCard) || printsCache.get(modifiedCard.id) || await fetchAllPrints(modifiedCard);
         }
@@ -1776,8 +1790,6 @@ async function applyCardOptions(card, options) {
     }
   }
 
-  // Bulk-data cards only have id/set/games/promo/digital — carry over display
-  // fields from the original API-fetched card so the rest of the app works.
   if (!modifiedCard.name)      modifiedCard.name      = card.name;
   if (!modifiedCard.oracle_id) modifiedCard.oracle_id = card.oracle_id;
   if (!modifiedCard.type_line) modifiedCard.type_line = card.type_line || '';
@@ -1786,10 +1798,8 @@ async function applyCardOptions(card, options) {
 
   modifiedCard._usedFallback = usedFallback;
   modifiedCard._fromCache = false;
-  modifiedCard._originalEntry = card._originalEntry;
+  modifiedCard._originalEntry = card._originalEntry; 
 
-  // 4. Cache result so subsequent runs for the same card/options are instant
-  // Key on the ORIGINAL card's name+set so the read (card.name, card.set) always matches the write.
   setCachedCard(card.name, card.set, null, modifiedCard, variant);
   return modifiedCard;
 }
