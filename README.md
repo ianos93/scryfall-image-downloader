@@ -39,6 +39,7 @@ data/
   prints_index.json         Local card database (generated)
   bulk_manifest.json        Database age/size metadata (generated)
 update_bulk_data.py         Builds the two files above from Scryfall bulk data
+update_bulk_data.bat        Windows launcher - double-click to run the script
 ```
 
 The `data/` folder is optional. Without it the app still works, but **Paper Only** and **First Print** fall back to live API calls (see [Card Database](#card-database)).
@@ -159,6 +160,10 @@ Resolves each card to its oldest non-promo, non-digital printing — useful for 
 - If the lookup fails, the originally fetched card is kept as a silent fallback
 - The search is **skipped** when you explicitly specified a set code for that card, so you can always pin an exact printing
 
+**Ties on the earliest date resolve to the base printing.** Alternate treatments — retro frame, showcase, borderless, extended art — release on the same day, in the same set, as the base card, and are not marked as promos, so release date and set code cannot tell them apart. Collector number can: Wizards numbers the base set first and places variants above it, so the lowest collector number among tied printings is taken. This affects roughly 17% of cards.
+
+This requires a **format 3** database. If `data/prints_index.json` was generated before this change, the info panel will warn you and First Print will fall back to an arbitrary but stable choice among tied printings — re-run `update_bulk_data.py` to fix it.
+
 ### Combining Both
 
 Paper Only and First Print can be active together, in which case the app resolves the **oldest paper printing** — for example the original Alpha/Beta/Revised print of a classic card, excluding digital-only reprints.
@@ -260,6 +265,13 @@ A live preview renders every page before you commit. When the job spans multiple
 
 **Generate PDF** saves `proxy-<size>-<timestamp>.pdf`, with a progress bar during assembly.
 
+PNG cards are re-encoded to high-quality JPEG when building the PDF. At 63 x 88 mm a
+745 x 1040 image is already around 300 DPI, so nothing is downscaled — but PNG is stored
+essentially uncompressed inside a PDF, which made large proxy sets run to hundreds of
+megabytes and risk failing during assembly. The re-encode cuts that by roughly 5-10x with
+no visible difference at print size. Images fetched at the JPEG resolutions are passed
+through untouched rather than re-encoded.
+
 ---
 
 ## Card Database
@@ -272,7 +284,7 @@ Luminary solves this with a local index.
 
 Run `update_bulk_data.py` once. It downloads Scryfall's `default_cards` bulk file and writes two files into `data/`:
 
-- **`prints_index.json`** — a compact map of `oracle_id` → printings, pre-sorted oldest-first. Each printing is stored as `[id, set, YYYYMMDD, gamesBits, flagsBits]`, keeping the file small enough to load in the browser.
+- **`prints_index.json`** — a compact map of `oracle_id` → printings, pre-sorted oldest-first. Each printing is stored as `[id, set, YYYYMMDD, gamesBits, flagsBits, collectorNumber]`, keeping the file small enough to load in the browser.
 - **`bulk_manifest.json`** — timestamps and record counts, used to display database age.
 
 Image URLs are reconstructed from card IDs rather than stored, which keeps the index roughly an order of magnitude smaller than the raw bulk data.
@@ -284,12 +296,22 @@ The **Card Database** section of the info modal (**ⓘ**, top right) shows a sta
 | Dot | Meaning |
 |---|---|
 | 🟢 Green | Local database loaded, updated within the last 14 days |
-| 🟡 Amber | Loaded but stale, or a remote download was used instead |
+| 🟡 Amber | Loaded but stale, or the file could not be parsed |
 | 🟠 Orange | No local database found |
 
-**Refresh Database** re-downloads directly from Scryfall into memory for the current session. This is a fallback, not a replacement — it does not write `data/`, so re-run `update_bulk_data.py` to make it persist.
+**Refresh Database** drops the in-memory index and re-reads `data/prints_index.json`, so a database you have just regenerated is picked up without a hard reload. It does not contact Scryfall.
 
-Refresh after each new set release, roughly every three months.
+To actually update the data, re-run `update_bulk_data.py` and then hit Refresh. Do this after each new set release, roughly every three months.
+
+On Windows, double-click **`update_bulk_data.bat`** instead of using a terminal. It finds your Python install, runs the script in its own folder, and keeps the window open at the end so you can read the result. It needs Python 3.7+ on the system and tells you where to get it if none is found.
+
+### Why there is no in-browser download
+
+Earlier versions fell back to downloading Scryfall's bulk file directly in the browser when no local index was present. That path has been removed. Scryfall completed its migration to gzipped JSONL bulk files on **2026-07-20**: the `/bulk-data` manifest no longer exposes `download_uri` (it is now `jsonl_download_uri`, with `compressed_size` replacing `size`), and the payload is gzip-compressed newline-delimited JSON rather than a single JSON array.
+
+Rebuilding the index in a tab would mean streaming roughly 460 MB of decompressed data to reproduce a file that `update_bulk_data.py` already generates offline in seconds. When the local file is missing, the app now says so plainly and falls back to per-card API lookups, where rate limits apply.
+
+> **If you are upgrading:** a copy of `update_bulk_data.py` written before July 2026 will break against the new manifest. It needs to read `jsonl_download_uri` instead of `download_uri`, and to gunzip and parse the download line by line rather than as one JSON array.
 
 ---
 
