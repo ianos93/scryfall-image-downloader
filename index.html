@@ -3,30 +3,27 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://c1.scryfall.com https://cards.scryfall.io; connect-src 'self' https:; worker-src blob:; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cards.scryfall.io; connect-src 'self' https://api.scryfall.com https://cards.scryfall.io https://data.scryfall.io; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+        integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+        integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
   :root {
-    --imperial:  #2A123F;
     --amethyst:  #481F6F;
     --lavender:  #9C8CB9;
     --orchid:    #C6B6DD;
     --pearl:     #F1EDF7;
-    --ink:       #0e0718;
     --glow:      rgba(150,100,220,0.5);
 
     /* dark overrides */
     --bg:           #130a1e;
-    --surface:      rgba(42,18,63,0.55);
-    --border:       rgba(156,140,185,0.15);
     --text:         var(--orchid);
-    --text-dim:     var(--lavender);
-    --text-head:    var(--pearl);
-    --dusted:       #9C8CB9;
     --panel-bg:     rgba(120, 104, 158, 0.13);
     --panel-border: rgba(156, 140, 185, 0.28);
   }
@@ -405,7 +402,6 @@
   .btn-zip:disabled { opacity: 0.3; cursor: not-allowed; background: transparent; border-color: rgba(241,237,247,0.15); color: #F1EDF7; }
 
   /* Progress */
-  #progress-section { display: none; margin-top: 28px; }
   .prog-row { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: 0.2em; color: #F1EDF7; opacity: 0.65; margin-bottom: 8px; }
   #progress-phase { 
     transition: opacity 0.3s ease, transform 0.3s ease;
@@ -519,31 +515,12 @@
     width: fit-content;
   }
 
-  .card-loading {
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
-    color: rgba(198,182,221,0.5); font-size: 11px; padding: 16px; text-align: center;
-  }
-  .ring {
-    width: 24px; height: 24px;
-    border: 1.5px solid rgba(156,140,185,0.15);
-    border-top-color: var(--lavender);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .card-err { color: rgba(156,140,185,0.4); font-size: 11px; text-align: center; padding: 14px; line-height: 1.5; }
-
   .stats-row {
     display: flex; align-items: center; justify-content: flex-end;
     flex-wrap: wrap; gap: 16px;
     margin-top: 20px; padding-top: 20px;
     border-top: 1px solid rgba(156,140,185,0.1);
   }
-  .stat-grp { display: flex; gap: 24px; }
-  .stat { font-size: 12px; color: #F1EDF7; opacity: 0.8; }
-  .stat b { font-family: 'Jost', sans-serif; font-size: 22px; font-weight: 400; color: #F1EDF7; opacity: 1; margin-right: 4px; letter-spacing: 0.05em; }
-  .stat b.miss { color: rgba(198,182,221,0.6); }
-
   #log {
     display: none;
     font-size: 11px; font-family: 'Jost', sans-serif; font-weight: 300; line-height: 1.9;
@@ -724,36 +701,6 @@
     color: var(--lavender);
     margin-right: 10px;
     font-size: 10px;
-  }
-  
-  /* Import tabs */
-  .import-tab:hover {
-    background: rgba(72,31,111,0.4) !important;
-    border-color: rgba(156,140,185,0.4) !important;
-    color: var(--orchid) !important;
-  }
-  .import-tab.active {
-    background: rgba(72,31,111,0.4) !important;
-    border-color: rgba(156,140,185,0.4) !important;
-    color: var(--orchid) !important;
-  }
-  
-  /* Tab content animations */
-  .tab-content-hidden {
-    opacity: 0;
-    transform: translateX(-10px);
-    pointer-events: none;
-  }
-  
-  .tab-content-visible {
-    opacity: 1;
-    transform: translateX(0);
-    pointer-events: all;
-  }
-  
-  #import-upload, #import-url {
-    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
-                transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
   /* ── Secret Lair easter egg ── */
@@ -998,12 +945,18 @@
 </div>
 
 <script>
-const DELAY=120,SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
+const SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
 let selectedSize='png',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
+// Declared here rather than in the second <script> block: fetchCardMetadata and
+// applyCardOptions read it, and a cross-block `let` would be in the temporal dead zone.
+let usePremium = false;
 let visualDeckData = { main: [], sideboard: [] };
 
 // Cache settings
-const CACHE_VERSION = 'v2';
+// v3: B4/B12 changed which printing First Print resolves to, and B1 changed the
+// stored scryfall_uri. Entries cached under v2 hold the old, wrong values and
+// would keep being served for up to 7 days, so the version bump invalidates them.
+const CACHE_VERSION = 'v3';
 const CACHE_EXPIRY_DAYS = 7;
 const CACHE_KEY_PREFIX = 'scryfall_cache_';
 
@@ -1306,6 +1259,8 @@ async function ensureBulkData(onProgress, forceRemote = false) {
   if (bulkDataIndex) return bulkDataIndex;
   if (bulkDataLoadPromise) return bulkDataLoadPromise;
 
+  // NOTE: on failure the memoised promise is cleared below, so a later fetch retries
+  // instead of replaying the same rejection for the rest of the session.
   bulkDataLoadPromise = (async () => {
     // ── Path A: local file served alongside the HTML ───────────────────────
     // Run update_bulk_data.py once to populate data/prints_index.json.
@@ -1405,6 +1360,7 @@ async function ensureBulkData(onProgress, forceRemote = false) {
     return index;
   })();
 
+  bulkDataLoadPromise.catch(() => { bulkDataLoadPromise = null; });
   return bulkDataLoadPromise;
 }
 
@@ -1483,12 +1439,12 @@ function parseLine(raw) {
   let quantity = 1;
   const qtyMatch = l.match(/^(\d+)\s*[xX×]\s*/);
   if (qtyMatch) {
-    quantity = parseInt(qtyMatch[1]);
+    quantity = parseInt(qtyMatch[1], 10);
     l = l.replace(/^\d+\s*[xX×]\s*/, '');
   } else {
     const bareQtyMatch = l.match(/^(\d+)\s+/);
     if (bareQtyMatch) {
-      quantity = parseInt(bareQtyMatch[1]);
+      quantity = parseInt(bareQtyMatch[1], 10);
       l = l.replace(/^\d+\s+/, '');
     }
   }
@@ -1659,6 +1615,16 @@ function sortCards(cardList) {
   });
 }
 
+// Scryfall normally returns JSON even for errors, but a CDN 5xx or a captive-portal
+// interstitial returns HTML. Parsing that would throw a SyntaxError and hide the real
+// status code, so read the body defensively and fall back to the status.
+async function readJson(res) {
+  try { return await res.json(); } catch { return null; }
+}
+function errText(data, res, fallback) {
+  return data?.details || fallback || `HTTP ${res.status} ${res.statusText || 'Error'}`;
+}
+
 async function fetchCardMetadata(entry) {
   const variant = usePremium ? 'premium' : 'default';
   const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
@@ -1671,32 +1637,32 @@ async function fetchCardMetadata(entry) {
   let card = null, usedFallback = false;
   const url = buildUrl(entry);
   const res = await rateLimitedFetch(url, { });
-  const data = await res.json();
+  const data = await readJson(res);
 
   if (res.ok) { card = data; } 
   else {
     if (res.status === 429 || res.status >= 500) {
-      throw new Error(data.details || `HTTP ${res.status} Error`);
+      throw new Error(errText(data, res));
     }
 
     const url2 = buildUrl(entry, true);
     if (url2 !== url) {
       const res2 = await rateLimitedFetch(url2, { });
-      const data2 = await res2.json();
+      const data2 = await readJson(res2);
       if (res2.ok) {
         card = data2;
       } else if (res2.status === 429 || res2.status >= 500) {
-        throw new Error(data2.details || `HTTP ${res2.status} Error`);
+        throw new Error(errText(data2, res2));
       }
     }
     
     if (!card && entry.name && (entry.set || entry.number)) {
       const res3 = await rateLimitedFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
-      const data3 = await res3.json();
-      if (!res3.ok) throw new Error(data3.details||'Not found');
+      const data3 = await readJson(res3);
+      if (!res3.ok) throw new Error(errText(data3, res3, 'Not found'));
       card = data3; usedFallback = true;
     } else if (!card) {
-      throw new Error(data.details||'Not found');
+      throw new Error(errText(data, res, 'Not found'));
     }
   }
 
@@ -1747,6 +1713,16 @@ async function fetchAllPrints(card) {
   }
 }
 
+// Bulk-index entries carry no scryfall_uri and no collector number, so an exact
+// /card/:set/:number permalink cannot be built. A set-scoped exact-name search is a
+// documented public URL that always lands on the right printing (or on that set's
+// list of arts), which beats linking to a printing the user did not receive.
+function buildPrintingUrl(name, set) {
+  if (!name) return null;
+  const q = set ? `!"${name}" set:${set}` : `!"${name}"`;
+  return `https://scryfall.com/search?q=${encodeURIComponent(q)}&unique=prints`;
+}
+
 async function applyCardOptions(card, options) {
   const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
   const variant = (usePremium ? 'premium' : 'default') + optSuffix;
@@ -1778,15 +1754,26 @@ async function applyCardOptions(card, options) {
   }
 
   if (options.firstPrint) {
-    const earlySetCodes = ['lea', 'leb', '2ed', 'arn', 'atq', 'leg', '3ed', 'drk', 'fem', 'ice', 'chr', 'hml', 'all', 'mir', 'vis', 'wth', 'tmp', 'sth', 'exo', 'usg', 'ulg', 'uds'];
-    const cardIsFromEarlySet = modifiedCard.set && earlySetCodes.includes(modifiedCard.set.toLowerCase());
+    // Only skip when the user pinned an exact set — being from an old set does not
+    // make a printing the oldest one (e.g. Lightning Bolt MIR is not the first print).
     const originalEntry = card._originalEntry || {};
-    const userSpecifiedMatchingSet = originalEntry.set && originalEntry.set.toLowerCase() === modifiedCard.set.toLowerCase();
-    const skipSearch = cardIsFromEarlySet || userSpecifiedMatchingSet;
-    if (!skipSearch && allPrints) {
+    const userSpecifiedMatchingSet = !!originalEntry.set && !!modifiedCard.set
+      && originalEntry.set.toLowerCase() === modifiedCard.set.toLowerCase();
+    if (!userSpecifiedMatchingSet && allPrints) {
       let candidates = allPrints.filter(c => !c.promo && !c.digital);
       if (options.paperOnly) candidates = candidates.filter(c => c.games && c.games.includes('paper'));
-      if (candidates.length > 0 && candidates[0].id !== modifiedCard.id) { modifiedCard = candidates[0]; usedFallback = true; }
+      if (candidates.length > 0) {
+        // ~20% of cards have two or more printings sharing the earliest release date.
+        // Picking candidates[0] would depend on bulk-file ordering and could change
+        // between database refreshes, so break ties on lowest id for a stable result.
+        const earliest = candidates[0].released_at;
+        let chosen = candidates[0];
+        for (const c of candidates) {
+          if (c.released_at !== earliest) break;
+          if (c.id < chosen.id) chosen = c;
+        }
+        if (chosen.id !== modifiedCard.id) { modifiedCard = chosen; usedFallback = true; }
+      }
     }
   }
 
@@ -1794,7 +1781,13 @@ async function applyCardOptions(card, options) {
   if (!modifiedCard.oracle_id) modifiedCard.oracle_id = card.oracle_id;
   if (!modifiedCard.type_line) modifiedCard.type_line = card.type_line || '';
   if (!modifiedCard.cmc)       modifiedCard.cmc       = card.cmc || 0;
-  if (!modifiedCard.scryfall_uri) modifiedCard.scryfall_uri = card.scryfall_uri;
+  // Do NOT inherit card.scryfall_uri here — after a Paper Only / First Print swap it
+  // points at the printing we did not use, so the card tile would open the wrong page.
+  if (!modifiedCard.scryfall_uri) {
+    modifiedCard.scryfall_uri = modifiedCard.id === card.id
+      ? card.scryfall_uri
+      : buildPrintingUrl(modifiedCard.name || card.name, modifiedCard.set);
+  }
 
   modifiedCard._usedFallback = usedFallback;
   modifiedCard._fromCache = false;
@@ -2832,7 +2825,6 @@ document.addEventListener('keydown', e => {
   }
 });
 
-let usePremium = false;
 document.getElementById('secretlair-toggle').addEventListener('click', () => {
   if (!secretLairActive) return;
   usePremium = !usePremium;
