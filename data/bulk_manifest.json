@@ -1,8 +1,8 @@
 {
-  "local_updated_at": "2026-08-08T22:41:08Z",
+  "local_updated_at": "2026-08-08T22:59:31Z",
   "scryfall_updated_at": "2026-08-08T21:12:18.583+00:00",
   "oracle_count": 38623,
   "total_entries": 116613,
-  "file_size_mb": 8.4,
-  "format_version": 2
+  "file_size_mb": 9.1,
+  "format_version": 3
 }
