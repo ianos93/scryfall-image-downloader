@@ -1,27 +1,47 @@
-# ✦ Scryfall Image Downloader
+# ✦ Luminary — Scryfall Image Downloader
 
-A browser-based tool for downloading Magic: The Gathering card images via the [Scryfall API](https://scryfall.com/docs/api). No installation required — open the page, paste your card list, and download a ZIP of high-quality card images.
+A single-file, browser-based tool for fetching Magic: The Gathering card images from the [Scryfall API](https://scryfall.com/docs/api) and turning them into downloadable assets: individual images, a visual decklist, or a print-ready proxy PDF.
+
+No installation, no build step, no API key. Open `index.html` and go.
 
 ---
 
 ## Features at a Glance
 
-- Paste card names or upload a `.txt` deck list file
-- Supports all major deck list export formats
+- Paste card names or upload a `.txt` deck list
+- Parses virtually every common deck export format, including main/sideboard sections and quantities
 - Six image resolution options (Small through PNG)
 - **Paper Only** — exclude digital-only prints (MTGO, Arena)
-- **First Print** — automatically fetch the oldest printing of each card
-- Visual card preview grid with hover details
-- Click or middle-click any card to open its Scryfall page
-- Download all fetched images as a single ZIP file
+- **First Print** — fetch the oldest printing of each card
+- **Three output modes:**
+  - **Individual Cards** — preview grid + ZIP download
+  - **Visual Decklist** — a single stacked-layout PNG, with optional transparent background
+  - **Print for Proxy** — paginated A4/A3 PDF at true card dimensions
+- Local card database for instant printing lookups (no per-card API calls)
+- 7-day browser cache of card metadata, with a per-variant breakdown and clear button
+- Cancel a fetch mid-flight without reloading the page
+- Rate-limit-aware fetching with automatic backoff and retry
 
 ---
 
 ## Getting Started
 
-Open `index.html` in any modern browser. No server, build step, or API key is needed.
+Open `index.html` in any modern browser.
 
-If hosting on GitHub Pages, push `index.html` (and optionally `favicon.png`) to the root of your repository and enable Pages under **Settings → Pages → Branch: main**.
+For GitHub Pages, push `index.html` (and optionally `favicon.png` and the `data/` folder) to the root of your repository, then enable Pages under **Settings → Pages → Branch: main**.
+
+### Project Structure
+
+```
+index.html                  The entire application
+favicon.png                 Site icon
+data/
+  prints_index.json         Local card database (generated)
+  bulk_manifest.json        Database age/size metadata (generated)
+update_bulk_data.py         Builds the two files above from Scryfall bulk data
+```
+
+The `data/` folder is optional. Without it the app still works, but **Paper Only** and **First Print** fall back to live API calls (see [Card Database](#card-database)).
 
 ---
 
@@ -29,17 +49,22 @@ If hosting on GitHub Pages, push `index.html` (and optionally `favicon.png`) to 
 
 ### Typing or Pasting
 
-Type or paste card names into the **Card Names** text area, one card per line. The input field accepts a wide range of formats — see [Supported Input Formats](#supported-input-formats) below.
+Type or paste card names into the **Card Names** text area, one per line.
 
 ### Uploading a File
 
-Drag and drop a `.txt` file onto the **Upload List** panel, or click the panel to browse for a file. The file's contents are loaded directly into the card name field. Standard deck export files from tools like Moxfield, Archidekt, EDHREC, and MTG Arena are all supported.
+Drag and drop a `.txt` file onto the **Import Decklist** panel, or click it to browse. The file contents replace whatever is in the text area. Exports from Moxfield, Archidekt, MTGTop8, EDHREC, and MTG Arena all work.
+
+### Limits
+
+- Above **100 cards** you'll be asked to confirm before the fetch starts
+- **500 cards** is a hard cap per run
 
 ---
 
 ## Supported Input Formats
 
-The parser handles virtually every common deck list export format. Quantities, set codes, collector numbers, and special syntax are all stripped automatically — only the card name is used for the lookup.
+Quantities, set codes, collector numbers, and special syntax are all stripped automatically — only the name (and optionally set/number) is used for lookup.
 
 ### Quantities
 
@@ -49,6 +74,8 @@ The parser handles virtually every common deck list export format. Quantities, s
 4X Lightning Bolt
 4× Lightning Bolt
 ```
+
+Quantities are remembered and used by the Visual Decklist and Proxy PDF.
 
 ### Set Codes and Collector Numbers
 
@@ -65,47 +92,52 @@ Lightning Bolt 93 (M10)
 Lightning Bolt #93 (M10)
 ```
 
-> **Note:** Bare (unbracketed) set codes must be written in ALL-CAPS (e.g. `M10`, `BRO`, `MH3`) to avoid ambiguity with card name words. Bracketed set codes like `(m10)` are accepted in any case.
+> **Note:** Bare (unbracketed) set codes must be ALL-CAPS (e.g. `M10`, `BRO`, `MH3`) to avoid ambiguity with card name words. Bracketed set codes like `(m10)` are accepted in any case.
 
 ### Double-Faced Cards
 
-Only the front face name is needed. The `//` separator is stripped automatically:
+Only the front face name is needed. Everything after `//` is stripped:
 
 ```
 Fire // Ice
 ```
 
-### Deck Section Headers
+### Leading Punctuation
 
-Lines matching common export headers are automatically filtered out and not treated as card names:
+Lines may begin with `/`, `#`, `*`, `-`, or whitespace — these are stripped before parsing. Lines starting with `#` are treated as comments and skipped entirely.
 
-```
-Deck
-Sideboard
-Commander
-Companion
-Maybeboard
-About
-```
+### Main Deck vs Sideboard
+
+The parser tracks which section each card belongs to. A card enters the sideboard when any of the following is seen:
+
+- An explicit header: `Sideboard`, `Side board`, `Side`, `SB`, `S.B.`
+- A bracket header: `[Sideboard]`
+- The **first blank line** after at least one main-deck card — but only if the file contains no bracket headers
+
+Headers such as `Deck`, `Main Deck`, `Commander`, and `Companion` switch back to the main deck. Category headers (`Lands`, `Creatures`, `Spells`, `Artifacts`, `About`, `Maybeboard`, …) are filtered out and never treated as card names.
 
 ### Deduplication
 
-Duplicate entries (case-insensitive) are silently ignored. Each unique card is fetched once.
+Duplicate entries are ignored case-insensitively, scoped per section. The dedup key is name + set + collector number, so `Lightning Bolt (M10)` and `Lightning Bolt (LEA)` are both kept.
+
+> Because dedup happens per line, splitting copies across multiple identical lines (`2 Lightning Bolt` then `2 Lightning Bolt`) keeps only the first line's quantity. Combine them into one line instead.
 
 ---
 
 ## Image Resolution
 
-Choose the resolution before clicking **Summon Cards**. The selection applies to all cards in the batch.
+Choose the resolution before clicking **Summon Cards**. The selection applies to the whole batch and determines the ZIP file extension.
 
 | Option | Dimensions | Format | Best For |
 |---|---|---|---|
 | Small | 146 × 204 px | JPEG | Thumbnails, quick previews |
 | Normal | 488 × 680 px | JPEG | Standard use, most deck tools |
 | Large | 672 × 936 px | JPEG | High quality printing |
-| PNG | 745 × 1040 px | PNG | Lossless, highest quality |
+| PNG | 745 × 1040 px | PNG | Lossless, highest quality (default) |
 | Art Crop | Varies | JPEG | Art only, no card frame |
 | Border Crop | Varies | JPEG | Full card, border removed |
+
+For proxy printing, **PNG** or **Large** are recommended — the PDF places cards at 63 × 88 mm, so lower resolutions will look soft.
 
 ---
 
@@ -113,38 +145,49 @@ Choose the resolution before clicking **Summon Cards**. The selection applies to
 
 ### Paper Only
 
-When enabled, the downloader checks the `games` field on every fetched card. If a card is only available digitally (MTGO, Arena), it automatically searches for the closest paper-printed version using the Scryfall search API with `game:paper`.
+Checks the `games` field on every fetched card. If a card exists only digitally (MTGO, Arena), the closest paper printing is substituted.
 
-- If a paper printing is found, it is used instead and flagged with **⚠ alt print used** in the log
-- If no paper printing exists at all, the card is marked as an error
+- If a paper printing is found it is used instead and flagged **⚠ alt print used** in the log
+- If no paper printing exists at all, the card is reported as an error
 
 ### First Print
 
-When enabled, the downloader searches for the oldest known printing of each card by querying Scryfall sorted by `released` ascending. This is useful for getting original artwork and the earliest set symbol.
+Resolves each card to its oldest non-promo, non-digital printing — useful for original artwork and early set symbols.
 
-- If the card you specified is already the oldest printing, it is kept as-is with no warning
-- If a different (older) printing is found, it is swapped in and flagged with **⚠ alt print used** in the log
-- If the first print search fails, the originally fetched card is kept as a silent fallback
+- If the card is already the oldest printing it is kept as-is, with no warning
+- If an older printing is found it is swapped in and flagged **⚠ alt print used**
+- If the lookup fails, the originally fetched card is kept as a silent fallback
+- The search is **skipped** when you explicitly specified a set code for that card, so you can always pin an exact printing
 
-### Combining Both Options
+### Combining Both
 
-Paper Only and First Print can be active simultaneously. When both are on, the downloader searches for the **oldest paper printing** — useful for getting the original Alpha/Beta/Revised printing of classic cards while excluding any digital-only reprints.
+Paper Only and First Print can be active together, in which case the app resolves the **oldest paper printing** — for example the original Alpha/Beta/Revised print of a classic card, excluding digital-only reprints.
 
 ---
 
 ## The Fetch Process
 
-Once you click **Summon Cards**, the downloader processes each card in sequence with a short delay between requests to comply with [Scryfall's rate limit guidelines](https://scryfall.com/docs/api#rate-limits).
+Clicking **Summon Cards** runs up to three phases, tracked by the badges and progress bar:
+
+1. **Card Data** — resolve every line to a Scryfall card object
+2. **Options** — apply Paper Only / First Print (only shown when one is enabled)
+3. **Images** — download the image for each resolved card
+
+Requests run three at a time, spaced ~150 ms apart globally to stay inside [Scryfall's rate limit guidelines](https://scryfall.com/docs/api#rate-limits). A `429` response triggers a `Retry-After`-aware backoff; image CDN failures retry with exponential backoff (500 ms → 1 s → 2 s).
+
+### Cancelling
+
+While a fetch is running, the button becomes **Cancel Summoning**. Clicking it aborts all in-flight and queued requests immediately.
 
 ### Search Strategy (3-tier fallback)
 
-For each card, the following attempts are made in order:
+For each card, in order:
 
-1. **Exact name search** — `GET /cards/named?exact=<name>` (optionally with `&set=` if a set code was provided). Precise matching, will not match tokens or variants.
-2. **Fuzzy name search** — `GET /cards/named?fuzzy=<name>`. Catches minor typos and alternate spellings.
-3. **Name-only fuzzy fallback** — If a set code was specified but not found, drops the set and searches by name only. This result is flagged with a yellow warning in the log.
+1. **Exact name** — `GET /cards/named?exact=<name>` (plus `&set=` if a set code was given)
+2. **Fuzzy name** — `GET /cards/named?fuzzy=<name>`, catching typos and alternate spellings
+3. **Name-only fuzzy** — if a set code was given but not found, the set is dropped and the name searched alone. Flagged yellow in the log.
 
-For set + collector number inputs (e.g. `M10 93`), the direct endpoint `GET /cards/:code/:number` is used instead, bypassing name search entirely.
+When both a set code and collector number are supplied (e.g. `M10 93`), the direct endpoint `GET /cards/:code/:number` is used instead and name search is skipped.
 
 ### Log Colours
 
@@ -154,31 +197,19 @@ For set + collector number inputs (e.g. `M10 93`), the direct endpoint `GET /car
 | 🟡 Yellow | Fallback or alternate print was used |
 | 🔴 Red | Card could not be found |
 
----
-
-## Card Preview Grid
-
-Successfully fetched cards appear as a visual grid below the progress bar. Cards that fail are not shown in the grid — errors appear only in the log.
-
-### Hovering
-
-Hover over any card to see a frosted info panel slide up from the bottom of the tile, showing:
-- The card's full name
-- The set code of the specific printing fetched
-
-### Opening on Scryfall
-
-Click any card (left-click or middle/scroll-wheel click) to open that exact printing on Scryfall in a new tab.
+Successful entries may carry suffixes: `⚠ alt print used` for a substituted printing, and `💾` when the card came from the local cache instead of the API.
 
 ---
 
-## Downloading Images
+## Output Mode 1 — Individual Cards
 
-Once at least one card has been fetched successfully, the **Download ZIP** button becomes active. Clicking it packages all fetched images into a single `.zip` file and downloads it.
+The default view. Successfully fetched cards appear in a grid; failures appear only in the log.
+
+- **Hover** a card for a frosted panel showing its full name and the set code of the exact printing fetched
+- **Click** (or middle-click) a card to open that printing on Scryfall in a new tab
+- **Download ZIP** packages every fetched image into one archive
 
 ### File Naming
-
-Each image file inside the ZIP is named using the card name and set code:
 
 ```
 Lightning_Bolt_m10.jpg
@@ -186,7 +217,99 @@ Black_Lotus_lea.png
 Jace_the_Mind_Sculptor_wwk.jpg
 ```
 
-The file extension matches the selected resolution (`.jpg` for all sizes except PNG, which uses `.png`).
+The extension follows the selected resolution (`.png` for PNG, `.jpg` for everything else). The archive is named `scryfall-<resolution>.zip`.
+
+---
+
+## Output Mode 2 — Visual Decklist
+
+Renders the whole deck as a single image using the classic stacked/fanned layout.
+
+- **Main deck** — 5 columns, up to 4 cards per overlapping stack
+- **Sideboard** — a separate right-hand column, up to 15 cards per stack, with a rotated `SIDEBOARD` label
+- Cards are sorted by type (Creature → Instant → Sorcery → Enchantment → Artifact → Planeswalker → Land), then mana value, then name
+- Quantities are respected — a playset appears as four overlapping copies
+
+### Options
+
+- **Export Resolution** — Full, Large (75%), or Medium (50%)
+- **Transparent Background** — drops the purple gradient backdrop, giving a PNG with alpha for compositing elsewhere
+
+**Download Image** saves a PNG named `visual-decklist-<timestamp>.png`.
+
+---
+
+## Output Mode 3 — Print for Proxy
+
+Builds a print-ready PDF with cards at true physical size (63 × 88 mm).
+
+### Settings
+
+| Setting | Options |
+|---|---|
+| Page Size | A4 (210 × 297 mm, 3 × 3 = 9 per page) · A3 (297 × 420 mm, 4 × 4 = 16 per page) |
+| Card Spacing | No spacing · 2 mm gap · 5 mm gap |
+| Repeat by Quantity | Print each card as many times as the decklist specifies |
+| Ignore Basic Lands | Skip Plains, Island, Swamp, Mountain, Forest, Wastes, and their snow-covered versions |
+
+The grid is centred on the page, so trimming with a guillotine or corner punch is straightforward. **No spacing** gives edge-to-edge cards with shared cut lines; the gap options give each card its own margin.
+
+### Preview
+
+A live preview renders every page before you commit. When the job spans multiple pages, use the **‹ ›** arrows to page through them. The summary line above the preview reports the layout, total card count, page count, and spacing.
+
+**Generate PDF** saves `proxy-<size>-<timestamp>.pdf`, with a progress bar during assembly.
+
+---
+
+## Card Database
+
+**Paper Only** and **First Print** need to know every printing of a card. Doing that per-card through the API means one paginated search per card, which triggers rate limiting fast — and Scryfall's `/cards/search` endpoint blocks cross-origin requests from some hosting origins, GitHub Pages included.
+
+Luminary solves this with a local index.
+
+### Generating It
+
+Run `update_bulk_data.py` once. It downloads Scryfall's `default_cards` bulk file and writes two files into `data/`:
+
+- **`prints_index.json`** — a compact map of `oracle_id` → printings, pre-sorted oldest-first. Each printing is stored as `[id, set, YYYYMMDD, gamesBits, flagsBits]`, keeping the file small enough to load in the browser.
+- **`bulk_manifest.json`** — timestamps and record counts, used to display database age.
+
+Image URLs are reconstructed from card IDs rather than stored, which keeps the index roughly an order of magnitude smaller than the raw bulk data.
+
+### Status and Refresh
+
+The **Card Database** section of the info modal (**ⓘ**, top right) shows a status dot:
+
+| Dot | Meaning |
+|---|---|
+| 🟢 Green | Local database loaded, updated within the last 14 days |
+| 🟡 Amber | Loaded but stale, or a remote download was used instead |
+| 🟠 Orange | No local database found |
+
+**Refresh Database** re-downloads directly from Scryfall into memory for the current session. This is a fallback, not a replacement — it does not write `data/`, so re-run `update_bulk_data.py` to make it persist.
+
+Refresh after each new set release, roughly every three months.
+
+---
+
+## Metadata Cache
+
+Resolved card data is cached in `localStorage` for **7 days** so repeat fetches skip the API entirely. Cached hits are marked with `💾` in the log.
+
+Each option combination is cached separately — Standard, Paper Only, First Print, and Paper + First are distinct entries for the same card, so toggling options never returns a stale result.
+
+Open the info modal to see a live breakdown by variant and a total count. **Clear All Cache** wipes every entry. When storage fills up, the oldest 30% of entries are evicted automatically.
+
+Images are **not** cached; only metadata is.
+
+---
+
+## Interface Notes
+
+- **ⓘ** (top right) opens the info modal: quick instructions, supported formats, changelog, cache management, and database status. It fades out as you scroll.
+- The progress area shows a phase label, a per-phase counter, and a scrolling log.
+- There is one undocumented option, unlocked by a keyboard sequence, that swaps cards for their showcase, borderless, Universes Beyond, and Secret Lair printings where available. It relies on Scryfall's `/cards/search` endpoint and so may not work on all hosting origins.
 
 ---
 
@@ -194,4 +317,6 @@ The file extension matches the selected resolution (`.jpg` for all sizes except 
 
 This tool uses the [Scryfall REST API](https://scryfall.com/docs/api). Card data and images are © Wizards of the Coast and their respective artists. Scryfall provides card data under the [DMCA safe harbour](https://scryfall.com/docs/api#usage).
 
-Per Scryfall's guidelines, requests are spaced 120ms apart and include a descriptive `User-Agent` header.
+Proxies generated with this tool are for personal playtesting only. Do not sell them, and do not use them in sanctioned play.
+
+Created by **ianos** · [GitHub](https://github.com/ianos93/scryfall-image-downloader/) · Powered by [Scryfall](https://scryfall.com)
