@@ -960,10 +960,11 @@ let usePremium = false;
 let visualDeckData = { main: [], sideboard: [] };
 
 // Cache settings
-// v3: B4/B12 changed which printing First Print resolves to, and B1 changed the
-// stored scryfall_uri. Entries cached under v2 hold the old, wrong values and
-// would keep being served for up to 7 days, so the version bump invalidates them.
-const CACHE_VERSION = 'v3';
+// v4: First Print now resolves same-day ties to the lowest collector number, so
+// cached picks from v3 and earlier can hold an alternate treatment (retro frame,
+// showcase) instead of the base card. Bumping invalidates them rather than serving
+// the old answer for another 7 days.
+const CACHE_VERSION = 'v4';
 const CACHE_EXPIRY_DAYS = 7;
 const CACHE_KEY_PREFIX = 'scryfall_cache_';
 
@@ -1258,6 +1259,12 @@ function updateBulkDbStatusFromManifest(manifest) {
   const ageDays = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
   const ageStr  = ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`;
   const records = manifest.record_count ? ` · ${(manifest.record_count / 1000).toFixed(0)}k cards` : '';
+  // Format 3 added collector numbers. Without them First Print cannot tell a base
+  // card from a same-day alternate treatment, so flag it rather than fail quietly.
+  if ((manifest.format_version || 0) < 3) {
+    setBulkDbStatus('db-warn', `Database predates collector numbers — re-run update_bulk_data.py so First Print picks base printings`);
+    return;
+  }
   if (ageDays > 14) {
     setBulkDbStatus('db-warn', `Local database updated ${ageStr}${records} — consider refreshing`);
   } else {
@@ -1368,7 +1375,7 @@ async function ensureBulkData(onProgress, forceReload = false) {
 // Decode a compact bulk entry [id, set, YYYYMMDD, gamesBits, flagsBits]
 // into a card-like object compatible with applyCardOptions filters.
 // Image URLs are reconstructed by getImg() from the card id — no stored URLs needed.
-function expandBulkEntry([id, set, dateStr, gamesBits, flagsBits]) {
+function expandBulkEntry([id, set, dateStr, gamesBits, flagsBits, collectorNumber]) {
   const games = [];
   if (gamesBits & 1) games.push('paper');
   if (gamesBits & 2) games.push('mtgo');
@@ -1380,8 +1387,26 @@ function expandBulkEntry([id, set, dateStr, gamesBits, flagsBits]) {
     games,
     digital:  !!(flagsBits & 1),
     promo:    !!(flagsBits & 2),
+    // Absent in format v2 indexes; the tie-break degrades to id order without it.
+    collector_number: collectorNumber ?? null,
     // name, oracle_id, _originalEntry carried over in applyCardOptions
   };
+}
+
+// Collector numbers are not plain integers: "224", "310", "12a", "S1", "★" all occur.
+// Rank numerically first (base-set cards), then non-numeric forms, then unknown, so a
+// missing value can never win a tie.
+function collectorRank(cn) {
+  if (cn === null || cn === undefined || cn === '') return [2, 0, ''];
+  const s = String(cn);
+  const m = s.match(/^(\d+)/);
+  return m ? [0, parseInt(m[1], 10), s] : [1, 0, s];
+}
+function compareCollector(a, b) {
+  const ra = collectorRank(a), rb = collectorRank(b);
+  if (ra[0] !== rb[0]) return ra[0] - rb[0];
+  if (ra[1] !== rb[1]) return ra[1] - rb[1];
+  return ra[2].localeCompare(rb[2]);
 }
 
 // Look up all printings for a card from the bulk index (instant, no API call)
@@ -1764,14 +1789,19 @@ async function applyCardOptions(card, options) {
       let candidates = allPrints.filter(c => !c.promo && !c.digital);
       if (options.paperOnly) candidates = candidates.filter(c => c.games && c.games.includes('paper'));
       if (candidates.length > 0) {
-        // ~20% of cards have two or more printings sharing the earliest release date.
-        // Picking candidates[0] would depend on bulk-file ordering and could change
-        // between database refreshes, so break ties on lowest id for a stable result.
+        // 17% of cards share their earliest release date across several printings, and
+        // in 16.9% of all cards those tied printings sit in the SAME set — retro frame,
+        // showcase, borderless and extended art ship alongside the base card and are
+        // not marked promo, so date, set and flags cannot separate them. Collector
+        // number can: WotC numbers the base set first and variants above it, so the
+        // lowest number in a tie is the base printing. Id is only a last resort, to
+        // keep the result stable when collector numbers are absent (format v2) or equal.
         const earliest = candidates[0].released_at;
         let chosen = candidates[0];
         for (const c of candidates) {
           if (c.released_at !== earliest) break;
-          if (c.id < chosen.id) chosen = c;
+          const cmp = compareCollector(c.collector_number, chosen.collector_number);
+          if (cmp < 0 || (cmp === 0 && c.id < chosen.id)) chosen = c;
         }
         if (chosen.id !== modifiedCard.id) { modifiedCard = chosen; usedFallback = true; }
       }
