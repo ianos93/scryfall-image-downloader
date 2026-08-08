@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cards.scryfall.io; connect-src 'self' https://api.scryfall.com https://cards.scryfall.io https://data.scryfall.io; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cards.scryfall.io; connect-src 'self' https://api.scryfall.com https://cards.scryfall.io; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
@@ -26,6 +26,13 @@
     --text:         var(--orchid);
     --panel-bg:     rgba(120, 104, 158, 0.13);
     --panel-border: rgba(156, 140, 185, 0.28);
+
+    /* Corner radius, as a small scale. Surfaces carry slightly more than the
+       controls sitting on them; canvases nested inside a padded surface use 4px
+       and hairline bars 3px, both set inline at their single use sites.
+       Tune these two to soften or harden the whole interface at once. */
+    --radius-surface: 8px;
+    --radius-control: 6px;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -167,7 +174,7 @@
   /* ── Cards (floating, no harsh borders) ── */
   .float-card {
     background: var(--panel-bg);
-    border-radius: 16px;
+    border-radius: var(--radius-surface);
     padding: 28px 32px 20px 32px;
     margin-bottom: 16px;
     box-shadow:
@@ -204,7 +211,7 @@
     height: 198px;
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.15);
-    border-radius: 10px;
+    border-radius: var(--radius-surface);
     color: var(--pearl);
     font-family: 'Jost', sans-serif;
     font-size: 14px;
@@ -235,7 +242,7 @@
 
   .upload-zone {
     border: 1.5px dashed rgba(156,140,185,0.2);
-    border-radius: 10px;
+    border-radius: var(--radius-surface);
     min-height: 150px;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
@@ -260,7 +267,7 @@
     padding: 7px 18px;
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.15);
-    border-radius: 100px;
+    border-radius: var(--radius-control);
     color: rgba(198,182,221,0.6);
     font-family: 'Jost', sans-serif;
     font-weight: 400;
@@ -284,7 +291,7 @@
     padding: 16px;
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.2);
-    border-radius: 12px;
+    border-radius: var(--radius-control);
     color: rgba(198,182,221,0.6);
     font-family: 'Jost', sans-serif;
     font-weight: 400;        /* fixed weight — no reflow jank */
@@ -320,7 +327,7 @@
     display: flex; align-items: center; gap: 8px;
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.2);
-    border-radius: 100px;
+    border-radius: var(--radius-control);
     padding: 6px 14px 6px 8px;
     color: rgba(241,237,247,0.5);
     font-family: 'Jost', sans-serif;
@@ -359,7 +366,7 @@
     padding: 18px;
     background: #C6B6DD !important;
     border: 1px solid rgba(241,237,247,0.3);
-    border-radius: 12px;
+    border-radius: var(--radius-control);
     color: #1a0d2e !important;
     font-family: 'Jost', sans-serif;
     font-weight: 500;
@@ -384,7 +391,7 @@
     padding: 11px 28px;
     background: #C6B6DD;
     border: 1px solid rgba(241,237,247,0.3);
-    border-radius: 100px;
+    border-radius: var(--radius-control);
     color: #1a0d2e;
     font-family: 'Jost', sans-serif;
     font-size: 11px;
@@ -414,8 +421,8 @@
     50% { opacity: 0; transform: translateY(-8px); }
     100% { opacity: 1; transform: translateY(0); }
   }
-  .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 100px; margin-bottom: 16px; overflow: hidden; }
-  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 100px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
+  .prog-track { height: 2px; background: rgba(156,140,185,0.1); border-radius: 3px; margin-bottom: 16px; overflow: hidden; }
+  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--amethyst), var(--lavender), var(--orchid)); border-radius: 3px; transition: width 0.4s; box-shadow: 0 0 8px rgba(150,100,220,0.4); }
   
   /* Phase summary badges */
   .phase-summary {
@@ -431,7 +438,7 @@
     padding: 6px 12px;
     background: rgba(20,8,35,0.5);
     border: 1px solid rgba(156,140,185,0.15);
-    border-radius: 100px;
+    border-radius: var(--radius-control);
     font-size: 10px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -468,7 +475,7 @@
 
   .card-item {
     aspect-ratio: 63/88;
-    border-radius: 8px;
+    border-radius: var(--radius-surface);
     overflow: hidden;
     background: rgba(20,8,35,0.7);
     border: 1px solid rgba(156,140,185,0.1);
@@ -534,10 +541,10 @@
 
   /* ── Themed scrollbar ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: rgba(20,8,35,0.4); border-radius: 100px; }
+  ::-webkit-scrollbar-track { background: rgba(20,8,35,0.4); border-radius: 3px; }
   ::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, var(--amethyst), var(--lavender));
-    border-radius: 100px;
+    border-radius: 3px;
     border: 1px solid rgba(156,140,185,0.15);
   }
   ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--lavender), var(--orchid)); }
@@ -579,7 +586,7 @@
     right: 32px;
     width: 32px;
     height: 32px;
-    border-radius: 50%;
+    border-radius: var(--radius-control);
     background: rgba(72,31,111,0.2);
     border: 1px solid rgba(156,140,185,0.2);
     color: rgba(198,182,221,0.5);
@@ -639,7 +646,7 @@
   .modal-content {
     background: var(--panel-bg);
     border: 1px solid var(--panel-border);
-    border-radius: 16px;
+    border-radius: var(--radius-surface);
     padding: 32px;
     max-width: 680px;
     width: 100%;
@@ -816,7 +823,7 @@
   <div id="tab-visual" style="display:none; margin-top: 20px;">
     <div class="float-card">
       <div class="card-label">Preview</div>
-      <div id="visual-preview-canvas-container" style="background: rgba(20,8,35,0.5); border-radius: 8px; padding: 16px; display: flex; justify-content: center;">
+      <div id="visual-preview-canvas-container" style="background: rgba(20,8,35,0.5); border-radius: var(--radius-surface); padding: 16px; display: flex; justify-content: center;">
         <canvas id="visual-preview-canvas" style="width: min(100%, 1000px); height: auto; display: block; border-radius: 4px;"></canvas>
       </div>
       <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
@@ -886,12 +893,12 @@
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
             <div style="font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(241,237,247,0.45); font-family: 'Jost', sans-serif;">Page Preview</div>
             <div id="proxy-nav" style="display:none; align-items:center; gap: 10px;">
-              <button id="proxy-prev" style="width:28px;height:28px;border-radius:50%;background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Previous page">‹</button>
+              <button id="proxy-prev" style="width:28px;height:28px;border-radius:var(--radius-control);background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Previous page">‹</button>
               <span id="proxy-page-label" style="font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(198,182,221,0.6);font-family:'Jost',sans-serif;min-width:60px;text-align:center;">1 / 1</span>
-              <button id="proxy-next" style="width:28px;height:28px;border-radius:50%;background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Next page">›</button>
+              <button id="proxy-next" style="width:28px;height:28px;border-radius:var(--radius-control);background:rgba(20,8,35,0.6);border:1px solid rgba(156,140,185,0.2);color:rgba(198,182,221,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;line-height:1;" title="Next page">›</button>
             </div>
           </div>
-          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: 10px; padding: 16px; position:relative; overflow:hidden; display:flex; justify-content:center;">
+          <div id="proxy-preview-wrap" style="background: rgba(20,8,35,0.5); border-radius: var(--radius-surface); padding: 16px; position:relative; overflow:hidden; display:flex; justify-content:center;">
             <canvas id="proxy-preview-canvas" style="display: block; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: min(100%, 680px); height: auto; transition: opacity 0.2s ease;"></canvas>
           </div>
         </div>
@@ -963,8 +970,32 @@ const CACHE_KEY_PREFIX = 'scryfall_cache_';
 // Global AbortController for cancelable fetches
 let currentAbortController = null;
 
-// Image node cache to drastically speed up re-rendering visual and proxy canvases
+// Decoded-bitmap cache, used to speed up re-rendering the visual and proxy canvases.
+// Bounded by total decoded pixels rather than entry count, because a PNG card decodes
+// to ~0.78 Mpx (~3.1 MB) while a "small" card is ~0.03 Mpx — a fixed entry count would
+// mean either a useless cache at small sizes or a runaway one at PNG. Map preserves
+// insertion order, so the oldest key is the least recently used once reads re-insert.
+const IMAGE_CACHE_MAX_PIXELS = 32 * 1024 * 1024;   // ~128 MB decoded at 4 bytes/px
 const imageNodeCache = new Map();
+let imageCachePixels = 0;
+
+function cacheImageNode(blob, img) {
+  const px = (img.naturalWidth || 0) * (img.naturalHeight || 0);
+  if (px <= 0 || px > IMAGE_CACHE_MAX_PIXELS) return;   // never cache a single oversized frame
+  imageNodeCache.set(blob, img);
+  imageCachePixels += px;
+  while (imageCachePixels > IMAGE_CACHE_MAX_PIXELS && imageNodeCache.size > 1) {
+    const oldestKey = imageNodeCache.keys().next().value;
+    const oldest = imageNodeCache.get(oldestKey);
+    imageNodeCache.delete(oldestKey);
+    imageCachePixels -= (oldest.naturalWidth || 0) * (oldest.naturalHeight || 0);
+  }
+}
+
+function clearImageNodeCache() {
+  imageNodeCache.clear();
+  imageCachePixels = 0;
+}
 // Cache the specific visual preview state 
 let cachedVisualCanvas = null;
 let cachedVisualTransparent = null;
@@ -1234,93 +1265,72 @@ function updateBulkDbStatusFromManifest(manifest) {
   }
 }
 
-// Called by the Refresh button — wipes the cached index and re-downloads from Scryfall
+// Called by the Refresh button — drops the in-memory index and re-reads the local
+// file, so a database regenerated by update_bulk_data.py is picked up without a
+// hard reload. It does not contact Scryfall; see ensureBulkData for why.
 let bulkRefreshInProgress = false;
 async function triggerBulkRefresh() {
   if (bulkRefreshInProgress) return;
   bulkRefreshInProgress = true;
   bulkDataIndex = null;
   bulkDataLoadPromise = null;
-  setBulkDbStatus('db-none', 'Downloading from Scryfall…');
+  setBulkDbStatus('db-none', 'Reloading local database…');
   try {
     await ensureBulkData((msg, progress) => {
       const pct = progress >= 0 ? ` (${Math.round(progress * 100)}%)` : '';
       setBulkDbStatus('db-none', msg + pct);
-    }, /* forceRemote= */ true);
-    setBulkDbStatus('db-ok', 'Database refreshed from Scryfall');
+    }, /* forceReload= */ true);
   } catch (e) {
-    setBulkDbStatus('db-warn', `Refresh failed: ${e.message}`);
+    setBulkDbStatus('db-warn', `Reload failed: ${e.message}`);
   } finally {
     bulkRefreshInProgress = false;
   }
 }
 
-async function ensureBulkData(onProgress, forceRemote = false) {
-  if (bulkDataIndex) return bulkDataIndex;
-  if (bulkDataLoadPromise) return bulkDataLoadPromise;
+// Loads data/prints_index.json, generated offline by update_bulk_data.py.
+//
+// There is deliberately no in-browser download fallback. Scryfall completed its move to
+// gzipped JSONL bulk files on 2026-07-20: the bulk-data manifest no longer exposes
+// `download_uri` (it is now `jsonl_download_uri`, with `compressed_size` replacing
+// `size`), and the payload is gzip-compressed newline-delimited JSON rather than a
+// single JSON array. Pulling ~460 MB through a tab to rebuild an index we already
+// generate offline is the wrong trade, so a missing local file is reported plainly
+// instead. Callers fall back to per-card API lookups.
+async function ensureBulkData(onProgress, forceReload = false) {
+  if (bulkDataIndex && !forceReload) return bulkDataIndex;
+  if (bulkDataLoadPromise && !forceReload) return bulkDataLoadPromise;
 
   // NOTE: on failure the memoised promise is cleared below, so a later fetch retries
   // instead of replaying the same rejection for the rest of the session.
   bulkDataLoadPromise = (async () => {
-    // ── Path A: local file served alongside the HTML ───────────────────────
-    // Run update_bulk_data.py once to populate data/prints_index.json.
-    // Subsequent page loads use this file — no Scryfall API calls needed.
-    if (!forceRemote) {
-      try {
-        // Check manifest first so we can show the age indicator even before parsing
-        let manifest = null;
-        try {
-          const mRes = await fetch('./data/bulk_manifest.json', { cache: 'no-cache' });
-          if (mRes.ok) manifest = await mRes.json();
-        } catch (_) { /* manifest missing is fine */ }
+    // Cache-bust on an explicit refresh so a freshly regenerated file is picked up
+    // without a hard reload; otherwise let the browser cache do its job.
+    const bust = forceReload ? `?t=${Date.now()}` : '';
+    const cacheMode = forceReload ? 'reload' : 'default';
 
-        onProgress?.('Loading local card database…', -1);
-        const localRes = await fetch('./data/prints_index.json');
-        if (localRes.ok) {
-          const contentLength = parseInt(localRes.headers.get('content-length') || '0', 10);
-          const reader = localRes.body.getReader();
-          const chunks = [];
-          let received = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            received += value.length;
-            if (contentLength > 0) onProgress?.('Loading local card database…', received / contentLength);
-          }
-          onProgress?.('Parsing card data…', -1);
-          const merged = new Uint8Array(received);
-          let offset = 0;
-          for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
-          // Format v2: dict keyed by oracle_id, values are pre-sorted compact arrays
-          const dict = JSON.parse(new TextDecoder().decode(merged));
-          onProgress?.('Building card index…', -1);
-          const index = new Map(Object.entries(dict));
-          bulkDataIndex = index;
-          onProgress?.('Card database ready', 1);
-          updateBulkDbStatusFromManifest(manifest);
-          return index;
-        }
-      } catch (localErr) {
-        // Local file missing or failed — warn and fall through to remote download
-        console.warn('[Luminary] Local prints_index.json not found or failed to load:', localErr?.message || localErr);
-        setBulkDbStatus('db-warn', 'Local database missing — downloading from Scryfall (run update_bulk_data.py to avoid this)');
-      }
+    // Read the manifest first so the age indicator can be shown even before parsing.
+    let manifest = null;
+    try {
+      const mRes = await fetch(`./data/bulk_manifest.json${bust}`, { cache: 'no-cache' });
+      if (mRes.ok) manifest = await mRes.json();
+    } catch (_) { /* manifest is cosmetic — absence is not fatal */ }
+
+    onProgress?.('Loading local card database…', -1);
+
+    let localRes;
+    try {
+      localRes = await fetch(`./data/prints_index.json${bust}`, { cache: cacheMode });
+    } catch (netErr) {
+      setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py');
+      throw new Error('data/prints_index.json could not be read');
+    }
+    if (!localRes.ok) {
+      setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py');
+      throw new Error(`data/prints_index.json returned HTTP ${localRes.status}`);
     }
 
-    // ── Path B: download from Scryfall (first-time setup or forced refresh) ─
-    setBulkDbStatus('db-none', 'Downloading from Scryfall…');
-    onProgress?.('Fetching bulk data manifest…', -1);
-    const manifestRes = await fetch('https://api.scryfall.com/bulk-data');
-    if (!manifestRes.ok) throw new Error('Could not fetch Scryfall bulk-data manifest');
-    const manifest = await manifestRes.json();
-    const entry = (manifest.data || []).find(e => e.type === 'default_cards');
-    if (!entry?.download_uri) throw new Error('default_cards bulk entry not found');
-
-    const fileRes = await fetch(entry.download_uri);
-    if (!fileRes.ok) throw new Error('Could not download bulk data file');
-    const contentLength = parseInt(fileRes.headers.get('content-length') || '0', 10);
-    const reader = fileRes.body.getReader();
+    const contentLength = parseInt(localRes.headers.get('content-length') || '0', 10);
+    const reader = localRes.body.getReader();
     const chunks = [];
     let received = 0;
     while (true) {
@@ -1328,35 +1338,26 @@ async function ensureBulkData(onProgress, forceRemote = false) {
       if (done) break;
       chunks.push(value);
       received += value.length;
-      if (contentLength > 0) onProgress?.('Downloading card database…', received / contentLength);
+      if (contentLength > 0) onProgress?.('Loading local card database…', received / contentLength);
     }
 
     onProgress?.('Parsing card data…', -1);
-    const merged = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
-    // Scryfall returns a raw array of full card objects — build compact index
-    // the same way update_bulk_data.py does (oracle_id → sorted compact arrays)
-    const cards = JSON.parse(new TextDecoder().decode(merged));
+    // Format v2: dict keyed by oracle_id, values are pre-sorted compact arrays.
+    // Assembling via Blob lets the browser decode and parse in one step rather than
+    // holding the chunks, a merged copy and a decoded string alive simultaneously.
+    let dict;
+    try {
+      dict = await new Response(new Blob(chunks)).json();
+    } catch (parseErr) {
+      setBulkDbStatus('db-warn', 'Local database is unreadable — re-run update_bulk_data.py');
+      throw new Error('data/prints_index.json is not valid JSON');
+    }
+
     onProgress?.('Building card index…', -1);
-    const GBITS = {paper: 1, mtgo: 2, arena: 4};
-    const rawIdx = {};
-    for (const c of cards) {
-      const oid = c.oracle_id;
-      if (!oid || !c.id) continue;
-      const g = (c.games || []).reduce((b, x) => b | (GBITS[x] || 0), 0);
-      const f = (c.digital ? 1 : 0) | (c.promo ? 2 : 0);
-      const d = (c.released_at || '1993-01-01').replace(/-/g, '');
-      if (!rawIdx[oid]) rawIdx[oid] = [];
-      rawIdx[oid].push([c.id, c.set || '', d, g, f]);
-    }
-    for (const entries of Object.values(rawIdx)) {
-      entries.sort((a, b) => a[2].localeCompare(b[2]));
-    }
-    const index = new Map(Object.entries(rawIdx));
+    const index = new Map(Object.entries(dict));
     bulkDataIndex = index;
     onProgress?.('Card database ready', 1);
-    setBulkDbStatus('db-warn', 'Using Scryfall download — run update_bulk_data.py to cache locally');
+    updateBulkDbStatusFromManifest(manifest);
     return index;
   })();
 
@@ -1848,7 +1849,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   fetchedImages=[];
   visualDeckData = { main: [], sideboard: [] };
   printsCache.clear();
-  imageNodeCache.clear();
+  clearImageNodeCache();
   cachedVisualCanvas = null;
   
   fb.innerHTML='✦ &nbsp; Cancel Summoning';
@@ -1916,7 +1917,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     if (paperOnly || firstPrint) {
       // Download the Scryfall bulk data file once so all prints lookups are local.
       // This completely replaces the per-card API calls that were causing 429 errors.
-      setProgressPhase('Downloading Card Database');
+      setProgressPhase('Loading Card Database');
       setProgress(0, 100);
       const phaseEl = document.getElementById('progress-phase');
       try {
@@ -1926,7 +1927,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         });
         log('✓  Card database loaded — prints lookups are now local', 'ok');
       } catch (bulkErr) {
-        log(`⚠  Bulk data unavailable (${bulkErr.message}). Falling back to API — rate limits may apply.`, 'warn');
+        log(`⚠  ${bulkErr.message}. Run update_bulk_data.py to enable local lookups; falling back to the API, where rate limits may apply.`, 'warn');
       }
 
       setProgressPhase('Applying Options');
@@ -2028,6 +2029,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       sortCards(visualDeckData.sideboard);
       grid.innerHTML = ''; grid.style.display = 'grid';
       let animationDelay = 0;
+      const GRID_STAGGER_MAX_S = 1.5;
       const seenCards = new Set();
       const allCards = [...visualDeckData.main, ...visualDeckData.sideboard];
       
@@ -2076,14 +2078,17 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         }
         
         grid.appendChild(tile);
-        animationDelay += 0.03;
+        // Cap the cumulative stagger: at 0.03s per tile an unbounded ramp meant the
+        // last card of a 500-card list appeared 15s in. Tiles past the cap share the
+        // final delay, so the reveal still cascades but always finishes promptly.
+        animationDelay = Math.min(animationDelay + 0.03, GRID_STAGGER_MAX_S);
       });
-      
-      const totalAnimationTime = animationDelay * 1000; 
-      setTimeout(async () => {
-        await generateVisualPreview();
-        document.getElementById('download-visual-btn').disabled = false;
-      }, totalAnimationTime + 200); 
+
+      // The preview no longer waits on the cosmetic grid animation — it only ever
+      // needed the image data, which is already in hand by this point.
+      generateVisualPreview()
+        .then(() => { document.getElementById('download-visual-btn').disabled = false; })
+        .catch(e => log(`⚠  Visual preview failed: ${e.message}`, 'warn'));
     }
   } catch(err) {
     if(err.name === 'AbortError' || err.message === 'Aborted') {
@@ -2158,11 +2163,26 @@ async function generateVisualPreview() {
   const mainHeight = mainRows > 0 ? (mainStackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
   const sideHeight = sideRows > 0 ? (sideStackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = Math.max(mainHeight, sideHeight);
-  
+
+  // Browsers cap both a single canvas dimension and total area, and exceeding either
+  // yields a silently blank canvas with no thrown error. Scale the whole render down
+  // uniformly instead, so a large deck produces a smaller image rather than nothing.
+  const MAX_CANVAS_DIM  = 16384;
+  const MAX_CANVAS_AREA = 96 * 1024 * 1024;
+  let renderScale = Math.min(1, MAX_CANVAS_DIM / canvasWidth, MAX_CANVAS_DIM / canvasHeight);
+  if (canvasWidth * canvasHeight * renderScale * renderScale > MAX_CANVAS_AREA) {
+    renderScale = Math.sqrt(MAX_CANVAS_AREA / (canvasWidth * canvasHeight));
+  }
+
   const canvas = document.createElement('canvas');
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
+  canvas.width  = Math.max(1, Math.floor(canvasWidth  * renderScale));
+  canvas.height = Math.max(1, Math.floor(canvasHeight * renderScale));
   const ctx = canvas.getContext('2d', { alpha: true });
+  if (renderScale < 1) {
+    // Draw in unscaled coordinates; the transform handles the reduction.
+    ctx.scale(renderScale, renderScale);
+    log(`⚠  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
+  }
   
   if (!isTransparent) {
     const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
@@ -2221,8 +2241,8 @@ async function generateVisualPreview() {
   
   const previewCanvas = document.getElementById('visual-preview-canvas');
   if (previewCanvas) {
-    previewCanvas.width = canvasWidth;
-    previewCanvas.height = canvasHeight;
+    previewCanvas.width = canvas.width;
+    previewCanvas.height = canvas.height;
     const previewCtx = previewCanvas.getContext('2d', { alpha: true });
     previewCtx.drawImage(canvas, 0, 0);
   }
@@ -2231,13 +2251,19 @@ async function generateVisualPreview() {
 }
 
 function loadImage(blob) {
-  if (imageNodeCache.has(blob)) return Promise.resolve(imageNodeCache.get(blob));
+  if (imageNodeCache.has(blob)) {
+    // Re-insert to mark as most recently used, so eviction stays LRU rather than FIFO.
+    const cached = imageNodeCache.get(blob);
+    imageNodeCache.delete(blob);
+    imageNodeCache.set(blob, cached);
+    return Promise.resolve(cached);
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       URL.revokeObjectURL(url);
-      imageNodeCache.set(blob, img);
+      cacheImageNode(blob, img);
       resolve(img);
     };
     img.onerror = () => {
@@ -2514,6 +2540,36 @@ document.getElementById('proxy-nobasics-toggle').addEventListener('click', () =>
   updateProxyLayoutInfo();
 });
 
+// Cards are placed at 63x88 mm. A PNG card (745x1040) is therefore already ~300 DPI,
+// so there is nothing to gain from downscaling — the cost is purely the encoding.
+// jsPDF stores PNG essentially uncompressed and base64 adds a further 33%, which is
+// what makes a large PNG proxy set balloon to hundreds of MB and risk an OOM during
+// assembly. Re-encoding to JPEG at high quality cuts that by roughly 5-10x with no
+// visible difference at print size. Set PROXY_JPEG_QUALITY to null to keep PNG as-is.
+const PROXY_JPEG_QUALITY = 0.92;
+let proxyEncodeCanvas = null;
+
+async function proxyImageData(blob) {
+  // Already a JPEG (Small / Normal / Large / the crops): pass straight through.
+  // Re-encoding would add generation loss for no size benefit.
+  if (PROXY_JPEG_QUALITY === null || blob.type !== 'image/png') {
+    const dataUrl = await blobToDataURL(blob);
+    return { dataUrl, fmt: dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG' };
+  }
+  const img = await loadImage(blob);
+  if (!proxyEncodeCanvas) proxyEncodeCanvas = document.createElement('canvas');
+  const c = proxyEncodeCanvas;
+  c.width  = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const cx = c.getContext('2d');
+  // JPEG has no alpha and Scryfall PNGs have transparent rounded corners, so flatten
+  // onto white — the same colour the paper already is.
+  cx.fillStyle = '#ffffff';
+  cx.fillRect(0, 0, c.width, c.height);
+  cx.drawImage(img, 0, 0);
+  return { dataUrl: c.toDataURL('image/jpeg', PROXY_JPEG_QUALITY), fmt: 'JPEG' };
+}
+
 function blobToDataURL(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2570,8 +2626,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     const y = startY + row * (CARD_H_MM + proxyGap);
 
     try {
-      const dataUrl = await blobToDataURL(cardList[i].blob);
-      const fmt = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      const { dataUrl, fmt } = await proxyImageData(cardList[i].blob);
       doc.addImage(dataUrl, fmt, x, y, CARD_W_MM, CARD_H_MM);
     } catch (e) {
       console.warn(`[Proxy] Failed to add image for ${cardList[i].name}:`, e);
@@ -2600,7 +2655,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%) translateY(20px);
   background: linear-gradient(135deg, rgba(40,15,5,0.97), rgba(30,10,40,0.97));
   border: 1px solid rgba(255,160,60,0.4);
-  border-radius: 12px; padding: 14px 22px;
+  border-radius: var(--radius-surface); padding: 14px 22px;
   display: flex; align-items: center; gap: 14px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,180,100,0.1), 0 0 30px rgba(255,120,40,0.15);
   opacity: 0; pointer-events: none;
@@ -2670,7 +2725,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
 
       <!-- Action row: clear + status -->
       <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
-        <button id="clear-cache-btn" style="padding: 9px 22px; background: rgba(72,31,111,0.35); border: 1px solid rgba(156,140,185,0.3); border-radius: 8px; color: var(--orchid); font-size: 11px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'Jost', sans-serif; font-weight: 500;">
+        <button id="clear-cache-btn" style="padding: 9px 22px; background: rgba(72,31,111,0.35); border: 1px solid rgba(156,140,185,0.3); border-radius: var(--radius-control); color: var(--orchid); font-size: 11px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'Jost', sans-serif; font-weight: 500;">
           ✕ &nbsp;Clear All Cache
         </button>
         <span id="cache-status" style="font-size: 11px; color: rgba(156,255,156,0.85); opacity: 0; transition: opacity 0.3s; letter-spacing: 0.05em;"></span>
@@ -2687,7 +2742,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         Refresh when a new set releases (~every 3 months).
       </div>
       <!-- DB status row -->
-      <div id="bulk-db-status" style="display:flex; align-items:center; gap:10px; padding: 10px 14px; border-radius: 8px; background: rgba(42,18,63,0.35); border: 1px solid rgba(156,140,185,0.12); margin-bottom: 14px;">
+      <div id="bulk-db-status" style="display:flex; align-items:center; gap:10px; padding: 10px 14px; border-radius: var(--radius-surface); background: rgba(42,18,63,0.35); border: 1px solid rgba(156,140,185,0.12); margin-bottom: 14px;">
         <span class="db-dot"></span>
         <span id="bulk-db-label" style="font-size:12px; color:rgba(198,182,221,0.7); flex:1; letter-spacing:0.04em;">Card database not loaded</span>
       </div>
@@ -2697,7 +2752,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         padding: 9px 22px;
         background: rgba(72,31,111,0.35);
         border: 1px solid rgba(156,140,185,0.3);
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         color: var(--orchid);
         font-size: 11px;
         letter-spacing: 0.12em;
@@ -2768,7 +2823,7 @@ function populateCacheBreakdown() {
   }
   el.innerHTML = VARIANTS
     .filter(v => counts[v.key] > 0)
-    .map(v => `<div style="display:flex; align-items:center; gap:8px; padding:6px 10px; background:rgba(42,18,63,0.3); border:1px solid rgba(156,140,185,0.1); border-radius:6px;">
+    .map(v => `<div style="display:flex; align-items:center; gap:8px; padding:6px 10px; background:rgba(42,18,63,0.3); border:1px solid rgba(156,140,185,0.1); border-radius:var(--radius-surface);">
       <span style="width:8px;height:8px;border-radius:50%;background:${v.color};flex-shrink:0;"></span>
       <span style="font-size:11px; color:rgba(241,237,247,0.65); flex:1;">${v.label}</span>
       <span style="font-size:13px; font-weight:600; color:rgba(241,237,247,0.9);">${counts[v.key]}</span>
