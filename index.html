@@ -283,7 +283,10 @@
     color: var(--pearl);
     box-shadow: 0 0 20px rgba(150,100,220,0.35);
   }
-  .size-hint { margin-top: 10px; color: rgba(241,237,247,0.55); min-height: 16px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; }
+  /* Specs and counts are scanned, not read — sans at a fixed weight is far easier
+     to parse at a glance than serif italic, especially for digits. Prose hints
+     (.option-hint and friends) keep the serif italic. */
+  .size-hint { margin-top: 10px; color: rgba(241,237,247,0.6); min-height: 16px; font-family: 'Jost', sans-serif; font-weight: 300; font-size: 12px; letter-spacing: 0.04em; }
 
   /* ── Action Buttons (Individual / Visual switcher) ── */
   .btn-action {
@@ -573,8 +576,8 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .history-meta {
-    font-family: 'Cormorant Garamond', serif; font-style: italic;
-    font-size: 13px; color: rgba(241,237,247,0.45);
+    font-family: 'Jost', sans-serif; font-weight: 300;
+    font-size: 12px; letter-spacing: 0.04em; color: rgba(241,237,247,0.5);
   }
   .history-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
   .history-badge {
@@ -953,7 +956,7 @@
             <span class="option-pip"></span>
             Transparent Background
           </button>
-          <button class="btn-zip" id="download-visual-btn" disabled>&#11015; Download Image</button>
+          <button class="btn-zip" id="download-visual-btn" disabled>&#8595; Download Image</button>
         </div>
       </div>
     </div>
@@ -998,7 +1001,7 @@
           </div>
         </div>
 
-        <div id="proxy-layout-info" style="font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: rgba(241,237,247,0.55);">
+        <div id="proxy-layout-info" style="font-family: 'Jost', sans-serif; font-weight: 300; font-size: 12px; letter-spacing: 0.04em; color: rgba(241,237,247,0.6);">
           A4 · 3 × 3 · 9 cards per page
         </div>
 
@@ -2399,7 +2402,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         });
         log('✓  Card database loaded — prints lookups are now local', 'ok');
       } catch (bulkErr) {
-        log(`⚠  ${bulkErr.message}. Run update_bulk_data.py to enable local lookups; falling back to the API, where rate limits may apply.`, 'warn');
+        log(`⚠︎  ${bulkErr.message}. Run update_bulk_data.py to enable local lookups; falling back to the API, where rate limits may apply.`, 'warn');
       }
 
       setProgressPhase('Applying Options');
@@ -2484,8 +2487,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         const notes = [];
         if (card._usedFirstPrint) notes.push(' ✦ first print');
         if (card._usedPaperOnly)  notes.push(' ✦ paper print');
-        const fallbackNote = card._usedFallback ? ` ⚠ alt print used` : notes.join('');
-        const cacheNote = card._fromCache ? ' 💾' : '';
+        const fallbackNote = card._usedFallback ? ` ⚠︎ alt print used` : notes.join('');
+        const cacheNote = card._fromCache ? ' \u2726 cached' : '';
         const premiumNote = card._usedPremium ? ' ✦ premium' : '';
         log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
         ok++;
@@ -2571,11 +2574,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       // needed the image data, which is already in hand by this point.
       generateVisualPreview()
         .then(() => { document.getElementById('download-visual-btn').disabled = false; })
-        .catch(e => log(`⚠  Visual preview failed: ${e.message}`, 'warn'));
+        .catch(e => log(`⚠︎  Visual preview failed: ${e.message}`, 'warn'));
     }
   } catch(err) {
     if(err.name === 'AbortError' || err.message === 'Aborted') {
-      log('⚠ Summoning cancelled by user.', 'warn');
+      log('⚠︎ Summoning cancelled by user.', 'warn');
       setProgressPhase('Cancelled');
     } else {
       log(`✕ Error: ${err.message}`, 'e');
@@ -2664,7 +2667,7 @@ async function generateVisualPreview() {
   if (renderScale < 1) {
     // Draw in unscaled coordinates; the transform handles the reduction.
     ctx.scale(renderScale, renderScale);
-    log(`⚠  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
+    log(`⚠︎  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
   }
   
   if (!isTransparent) {
@@ -2784,7 +2787,7 @@ document.getElementById('download-visual-btn').addEventListener('click', async (
     btn.textContent = 'Generating…';
     canvas = await generateVisualPreview();
     btn.disabled = false;
-    btn.textContent = '⬇ Download Image';
+    btn.textContent = '\u2193 Download Image';
   } else {
     canvas = previewCanvas;
   }
