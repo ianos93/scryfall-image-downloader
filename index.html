@@ -559,6 +559,25 @@
   }
   #history-card.open #history-chevron { transform: rotate(180deg); }
 
+  /* height:auto is not animatable, and a max-height guess would either clip a long
+     list or coast through empty space on a short one. Animating a grid row from
+     0fr to 1fr resolves against the real content height, so 1 entry and 20 both
+     take the same time and neither is clipped. */
+  #history-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 0.34s cubic-bezier(0.4,0,0.2,1),
+                opacity 0.22s ease;
+  }
+  #history-card.open #history-body { grid-template-rows: 1fr; opacity: 1; }
+  /* min-height:0 is required, or the row refuses to shrink below its content */
+  .history-body-inner { overflow: hidden; min-height: 0; padding-top: 16px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #history-body, #history-chevron, .history-edit { transition: none; }
+  }
+
   .history-row {
     display: flex; align-items: center; gap: 14px;
     padding: 11px 12px;
@@ -880,16 +899,18 @@
   </div>
 
   <div class="float-card" id="history-card" style="display:none;">
-    <div class="card-label history-head" id="history-head">
+    <div class="card-label history-head" id="history-head" role="button" tabindex="0" aria-expanded="false" aria-controls="history-body">
       <span>Recent Lists</span>
       <span class="history-head-right">
         <span id="history-count">0 saved</span>
         <span id="history-chevron">&#9662;</span>
       </span>
     </div>
-    <div id="history-body" style="display:none; margin-top:16px;">
-      <div id="history-list"></div>
-      <div id="history-note">Saved in this browser only &mdash; not synced, and cleared if you clear site data.</div>
+    <div id="history-body">
+      <div class="history-body-inner">
+        <div id="history-list"></div>
+        <div id="history-note">Saved in this browser only &mdash; not synced, and cleared if you clear site data.</div>
+      </div>
     </div>
   </div>
 
@@ -1502,11 +1523,15 @@ function clearAllHistory() {
   return n;
 }
 
-document.getElementById('history-head').addEventListener('click', () => {
-  const card = document.getElementById('history-card');
-  const body = document.getElementById('history-body');
-  const open = card.classList.toggle('open');
-  body.style.display = open ? 'block' : 'none';
+const historyHead = document.getElementById('history-head');
+function toggleHistoryPanel() {
+  const open = document.getElementById('history-card').classList.toggle('open');
+  historyHead.setAttribute('aria-expanded', String(open));
+}
+historyHead.addEventListener('click', toggleHistoryPanel);
+historyHead.addEventListener('keydown', e => {
+  // tabindex makes it focusable, so it has to answer to Enter and Space like a button
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleHistoryPanel(); }
 });
 
 renderHistory();
