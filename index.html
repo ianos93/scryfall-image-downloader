@@ -597,6 +597,18 @@
   .history-btn:hover { border-color: var(--lavender); color: var(--pearl); background: rgba(72,31,111,0.4); }
   .history-btn.icon { padding: 7px 10px; font-size: 12px; letter-spacing: 0; }
   .history-btn.danger:hover { border-color: rgba(255,120,140,0.55); color: rgba(255,150,165,0.95); background: rgba(80,20,35,0.35); }
+  .history-rename {
+    width: 100%;
+    background: rgba(20,8,35,0.75);
+    border: 1px solid var(--lavender);
+    border-radius: var(--radius-control);
+    color: var(--pearl);
+    font-family: 'Jost', sans-serif;
+    font-size: 13px; font-weight: 400;
+    padding: 5px 8px;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(150,100,220,0.12);
+  }
   #history-note {
     margin-top: 14px; font-size: 11px; letter-spacing: 0.05em;
     color: rgba(198,182,221,0.35); font-family: 'Jost', sans-serif;
@@ -1182,6 +1194,7 @@ function clearAllCache() {
 const HISTORY_KEY      = 'scryfall_history_v1';
 const HISTORY_MAX      = 20;
 const HISTORY_MAX_TEXT = 50_000;   // a pathological paste must not crowd out the card cache
+const HISTORY_NAME_MAX = 60;       // keeps a custom name on one line in the row
 
 function readHistory() {
   try {
@@ -1258,12 +1271,19 @@ function saveHistoryEntry(text, sections, options) {
       side: sections.sideboard.reduce((n, e) => n + (e.quantity || 1), 0)
     },
     options,
-    label: historyLabelFor(sections)
+    // label is always derived and refreshed on every save; name is whatever the user
+    // typed. Keeping them apart means renaming never goes stale, and a list that has
+    // not been renamed still tracks its own contents.
+    label: historyLabelFor(sections),
+    name: null
   };
 
   // Re-running a list you already saved moves it to the top and refreshes its
   // options, rather than filling the panel with copies of itself.
-  const rest = readHistory().filter(e => e.key !== key);
+  const all = readHistory();
+  const prior = all.find(e => e.key === key);
+  if (prior && prior.name) entry.name = prior.name;   // a rename must survive a re-run
+  const rest = all.filter(e => e.key !== key);
   writeHistory([entry, ...rest]);
   renderHistory();
 }
@@ -1289,7 +1309,8 @@ function renderHistory() {
 
     const label = document.createElement('div');
     label.className = 'history-label';
-    label.textContent = e.label || 'Untitled list';   // textContent: card names are user input
+    label.textContent = e.name || e.label || 'Untitled list';   // textContent: names are user input
+    if (e.name) label.title = e.label || '';                    // derived name still reachable
     main.appendChild(label);
 
     const meta = document.createElement('div');
@@ -1325,6 +1346,13 @@ function renderHistory() {
     loadBtn.title = 'Put this list back in the card names field';
     loadBtn.addEventListener('click', () => applyHistoryEntry(e.id));
     actions.appendChild(loadBtn);
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'history-btn icon';
+    renameBtn.textContent = '\u270E';
+    renameBtn.title = 'Rename this list';
+    renameBtn.addEventListener('click', () => beginHistoryRename(e.id, label));
+    actions.appendChild(renameBtn);
 
     const dlBtn = document.createElement('button');
     dlBtn.className = 'history-btn icon';
@@ -1378,11 +1406,51 @@ function applyHistoryEntry(id) {
   ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function renameHistoryEntry(id, name) {
+  const all = readHistory();
+  const entry = all.find(x => x.id === id);
+  if (!entry) return;
+  entry.name = name || null;      // cleared back to null, so the derived label returns
+  writeHistory(all);
+}
+
+function beginHistoryRename(id, labelEl) {
+  const entry = readHistory().find(x => x.id === id);
+  if (!entry || !labelEl.isConnected) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'history-rename';
+  input.maxLength = HISTORY_NAME_MAX;
+  input.value = entry.name || entry.label || '';
+  input.setAttribute('aria-label', 'List name');
+  labelEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  // Enter and blur both commit, so guard against running twice.
+  let settled = false;
+  const finish = (commit) => {
+    if (settled) return;
+    settled = true;
+    if (commit) {
+      const value = input.value.replace(/\s+/g, ' ').trim().slice(0, HISTORY_NAME_MAX);
+      renameHistoryEntry(id, value);   // empty input reverts to the derived label
+    }
+    renderHistory();
+  };
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter')       { ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
 function downloadHistoryEntry(id) {
   const e = readHistory().find(x => x.id === id);
   if (!e) return;
   const stamp = new Date(e.savedAt).toISOString().slice(0, 10);
-  const name = `${sanitize(e.label || 'card-list').replace(/\s+/g, '_')}_${stamp}.txt`;
+  const name = `${sanitize(e.name || e.label || 'card-list').replace(/\s+/g, '_')}_${stamp}.txt`;
   const blob = new Blob([e.text], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
