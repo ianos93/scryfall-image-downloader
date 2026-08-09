@@ -1661,7 +1661,11 @@ let bulkDataIndex = null;      // Map<oracle_id, Card[]> sorted released_at ASC
 let bulkDataLoadPromise = null;
 
 // ── Bulk DB status UI helpers ─────────────────────────────────────────────────
-function setBulkDbStatus(state, label) {
+// label is shown in the info panel and should describe the consequence for the
+// person using the page. devNote goes to the console for whoever maintains the
+// deployment, and is the only place implementation detail belongs.
+function setBulkDbStatus(state, label, devNote) {
+  if (devNote) console.warn(`[Luminary] ${devNote}`);
   const el = document.getElementById('bulk-db-status');
   const lbl = document.getElementById('bulk-db-label');
   if (!el || !lbl) return;
@@ -1677,7 +1681,11 @@ function setBulkDbStatus(state, label) {
 let bulkHasCollectorNumbers = null;
 
 function updateBulkDbStatusFromManifest(manifest) {
-  if (!manifest) { setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py'); return; }
+  if (!manifest) {
+    setBulkDbStatus('db-none', 'Card database unavailable — First Print and Paper Only will be slower',
+      'data/bulk_manifest.json not found. Run update_bulk_data.py to generate data/prints_index.json and data/bulk_manifest.json.');
+    return;
+  }
   const updated = new Date(manifest.local_updated_at);
   const ageDays = Math.floor((Date.now() - updated.getTime()) / 86_400_000);
   const ageStr  = ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`;
@@ -1687,7 +1695,8 @@ function updateBulkDbStatusFromManifest(manifest) {
   // Only warn once the index has actually been read and found lacking. On page load
   // nothing has been verified yet, so say nothing about it rather than guess.
   if (bulkHasCollectorNumbers === false) {
-    setBulkDbStatus('db-warn', 'Index has no collector numbers — re-run update_bulk_data.py so First Print picks base printings');
+    setBulkDbStatus('db-warn', 'Card database is out of date — First Print may not pick the base printing',
+      'prints_index.json predates format 3 and has no collector numbers, so First Print cannot resolve same-day ties (retro frame, showcase, borderless). Re-run update_bulk_data.py.');
     return;
   }
   if (ageDays > 14) {
@@ -1753,11 +1762,13 @@ async function ensureBulkData(onProgress, forceReload = false) {
     try {
       localRes = await fetch(`./data/prints_index.json${bust}`, { cache: cacheMode });
     } catch (netErr) {
-      setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py');
+      setBulkDbStatus('db-none', 'Card database unavailable — First Print and Paper Only will be slower',
+        `data/prints_index.json could not be fetched (${netErr.message}). Run update_bulk_data.py.`);
       throw new Error('data/prints_index.json could not be read');
     }
     if (!localRes.ok) {
-      setBulkDbStatus('db-none', 'Local database not found — run update_bulk_data.py');
+      setBulkDbStatus('db-none', 'Card database unavailable — First Print and Paper Only will be slower',
+        `data/prints_index.json returned HTTP ${localRes.status}. Run update_bulk_data.py, and check the file was committed alongside bulk_manifest.json.`);
       throw new Error(`data/prints_index.json returned HTTP ${localRes.status}`);
     }
 
@@ -1781,7 +1792,8 @@ async function ensureBulkData(onProgress, forceReload = false) {
     try {
       dict = await new Response(new Blob(chunks)).json();
     } catch (parseErr) {
-      setBulkDbStatus('db-warn', 'Local database is unreadable — re-run update_bulk_data.py');
+      setBulkDbStatus('db-warn', 'Card database could not be read — First Print and Paper Only will be slower',
+        'data/prints_index.json is not valid JSON — it may be truncated or stored with Git LFS. Re-run update_bulk_data.py.');
       throw new Error('data/prints_index.json is not valid JSON');
     }
 
@@ -2402,7 +2414,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         });
         log('✓  Card database loaded — prints lookups are now local', 'ok');
       } catch (bulkErr) {
-        log(`⚠︎  ${bulkErr.message}. Run update_bulk_data.py to enable local lookups; falling back to the API, where rate limits may apply.`, 'warn');
+        console.warn(`[Luminary] Bulk index unavailable: ${bulkErr.message}. Run update_bulk_data.py to generate data/prints_index.json.`);
+        log('⚠︎  Card database unavailable — using the Scryfall API instead, which is slower and may hit rate limits.', 'warn');
       }
 
       setProgressPhase('Applying Options');
@@ -3162,7 +3175,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
     <h3>Luminary</h3>
-    <div class="version">VERSION 3.1</div>
+    <div class="version">VERSION 4.0</div>
     
     <div class="modal-section">
       <h4>Quick Instructions</h4>
@@ -3170,7 +3183,8 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         <li>Enter card names (one per line) or upload a .txt decklist file</li>
         <li>Select image quality and options (Paper Only, First Print)</li>
         <li>Click "Summon Cards" to fetch from Scryfall</li>
-        <li>Download individual images as ZIP or visual decklist as PNG</li>
+        <li>Choose an output: Individual Cards (ZIP), Visual Decklist (PNG), or Print for Proxy (PDF)</li>
+        <li>Successful fetches are saved to Recent Lists so you can reload them later</li>
       </ul>
     </div>
     
@@ -3182,6 +3196,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         <li>With set codes: <code>Lightning Bolt (M10)</code> or <code>Lightning Bolt M10</code></li>
         <li>With collector numbers: <code>Savannah Lions DMR 270</code> or <code>Lightning Bolt M10 #341</code></li>
         <li>Deck sections: <code>Deck</code>, <code>Sideboard</code>, <code>//Sideboard</code>, <code>Commander</code></li>
+        <li>Repeated lines are added together: <code>2 Sol Ring</code> twice gives 4 copies</li>
       </ul>
       <div style="margin-top: 12px; font-size: 11px; color: rgba(241,237,247,0.5); line-height: 1.6;">
         <strong>Tip:</strong> Use set codes + collector numbers to fetch specific printings (e.g., <code>Sol Ring 6ED 350</code>)
@@ -3189,21 +3204,24 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     </div>
     
     <div class="modal-section">
-      <h4>What's New in v3.1</h4>
+      <h4>What's New in v4.0</h4>
       <ul>
-        <li>Memory Management — image caching for fast preview switching and proxy generation</li>
-        <li>Cancel Fetches — abort mid-flight requests without freezing the UI</li>
-        <li>Live Preview — transparent background toggle now instantly updates</li>
-        <li>Cache eviction logic properly removes oldest elements rather than a hard wipe</li>
+        <li>Recent Lists — your last 20 fetched lists, saved in this browser. Reload, rename, or download any of them as .txt</li>
+        <li>First Print now resolves to the base printing, not a same-day showcase or retro-frame variant</li>
+        <li>Repeated lines add their quantities instead of the later line being dropped</li>
+        <li>Log entries say why a printing changed: <em>first print</em>, <em>paper print</em> or <em>alt print used</em></li>
+        <li>Card database rebuilt for Scryfall's JSONL bulk format, now storing collector numbers</li>
+        <li>Proxy PDFs are far smaller, and large decks no longer risk a blank visual decklist</li>
+        <li>Bounded image memory, tightened security policy, and a squarer interface</li>
       </ul>
     </div>
     
     <div class="modal-section">
-      <h4>Cache Management</h4>
+      <h4>Cache &amp; Saved Lists</h4>
       <div style="margin-bottom: 14px; font-size: 12px; color: rgba(241,237,247,0.6); line-height: 1.7;">
         Card metadata is cached in your browser for <strong>7 days</strong> to avoid repeat API calls.
         Each option combination (Paper Only, First Print, Premium) is stored separately.
-        Clear the cache if you need to force a re-fetch or free up space.
+        Recent Lists are stored separately again, so clearing the cache never removes them.
       </div>
 
       <!-- Live cache breakdown -->
