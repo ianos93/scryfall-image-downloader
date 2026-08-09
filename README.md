@@ -4,6 +4,8 @@ A single-file, browser-based tool for fetching Magic: The Gathering card images 
 
 No installation, no build step, no API key. Open `index.html` and go.
 
+**Version 4.0**
+
 ---
 
 ## Features at a Glance
@@ -17,6 +19,7 @@ No installation, no build step, no API key. Open `index.html` and go.
   - **Individual Cards** — preview grid + ZIP download
   - **Visual Decklist** — a single stacked-layout PNG, with optional transparent background
   - **Print for Proxy** — paginated A4/A3 PDF at true card dimensions
+- **Recent Lists** — your last 20 fetched lists, saved in the browser and reloadable in one click
 - Local card database for instant printing lookups (no per-card API calls)
 - 7-day browser cache of card metadata, with a per-variant breakdown and clear button
 - Cancel a fetch mid-flight without reloading the page
@@ -117,11 +120,18 @@ The parser tracks which section each card belongs to. A card enters the sideboar
 
 Headers such as `Deck`, `Main Deck`, `Commander`, and `Companion` switch back to the main deck. Category headers (`Lands`, `Creatures`, `Spells`, `Artifacts`, `About`, `Maybeboard`, …) are filtered out and never treated as card names.
 
-### Deduplication
+### Repeated Lines
 
-Duplicate entries are ignored case-insensitively, scoped per section. The dedup key is name + set + collector number, so `Lightning Bolt (M10)` and `Lightning Bolt (LEA)` are both kept.
+Lines requesting the same card **and** the same printing are combined, and their quantities added. `2 Lightning Bolt` followed later by `2 Lightning Bolt` gives you four copies, so decklists that split a playset across categories come out right.
 
-> Because dedup happens per line, splitting copies across multiple identical lines (`2 Lightning Bolt` then `2 Lightning Bolt`) keeps only the first line's quantity. Combine them into one line instead.
+The match is on name + set code + collector number, case-insensitively, so asking for genuinely different printings keeps them apart:
+
+```
+2 Lightning Bolt (M10)      -> 2 copies of the M10 printing
+2 Lightning Bolt (LEA)      -> 2 copies of the LEA printing
+```
+
+A bare name and a set-qualified name count as different requests, since the app cannot know at parse time whether they resolve to the same printing. Main deck and sideboard are totalled independently.
 
 ---
 
@@ -198,11 +208,20 @@ When both a set code and collector number are supplied (e.g. `M10 93`), the dire
 
 | Colour | Meaning |
 |---|---|
-| 🔵 Blue | Card found exactly as requested |
-| 🟡 Yellow | Fallback or alternate print was used |
+| 🔵 Blue | Card resolved as requested |
+| 🟡 Yellow | The request could not be honoured exactly |
 | 🔴 Red | Card could not be found |
 
-Successful entries may carry suffixes: `⚠ alt print used` for a substituted printing, and `💾` when the card came from the local cache instead of the API.
+Successful entries may carry suffixes:
+
+| Suffix | Meaning |
+|---|---|
+| `✦ first print` | First Print swapped in an earlier printing |
+| `✦ paper print` | Paper Only swapped in a paper printing |
+| `⚠ alt print used` | The set code you gave was not found, so the card was matched by name alone |
+| `💾` | Served from the local cache instead of the API |
+
+Only `⚠ alt print used` colours the line yellow. A swap caused by an option you switched on is the feature working, so it stays blue.
 
 ---
 
@@ -315,6 +334,29 @@ Rebuilding the index in a tab would mean streaming roughly 460 MB of decompresse
 
 ---
 
+## Recent Lists
+
+Every fetch that returns at least one card is saved, so a list you used last week is one click away. Nothing is saved for a run that found nothing, and typing alone never saves.
+
+The panel sits above **Image Resolution**, collapsed until you open it, and stays hidden entirely until you have something in it.
+
+| Action | What it does |
+|---|---|
+| **Load** | Puts the list back in the card names field and restores the resolution and options it was fetched with. It does not re-fetch — edit first if you want to. |
+| **✎** | Rename the list. Appears on hover, next to the name. Press Enter to save, Escape to cancel, or clear the field to go back to the automatic name. |
+| **↓** | Download the list as a `.txt` file, named after the list and the date it was saved. |
+| **×** | Remove that entry. |
+
+Lists are named automatically from their contents — `Lightning Bolt +23 more` — until you rename one. A custom name survives re-running the list, and the automatic name keeps tracking the contents underneath, reachable as the row's tooltip.
+
+Re-fetching a list you already have moves it to the top rather than adding a duplicate. Matching ignores casing, blank lines and trailing spaces, so a lightly edited list counts as the same list. The 20 most recent are kept.
+
+**Clear List History** in the info panel removes them all at once. History is stored under its own key, so clearing the card cache never touches it — and the reverse is true too.
+
+> Storage is per browser and per site. Lists saved while testing locally won't appear on your hosted copy, and clearing site data removes them. There are no accounts and nothing is uploaded.
+
+---
+
 ## Metadata Cache
 
 Resolved card data is cached in `localStorage` for **7 days** so repeat fetches skip the API entirely. Cached hits are marked with `💾` in the log.
@@ -329,9 +371,33 @@ Images are **not** cached; only metadata is.
 
 ## Interface Notes
 
-- **ⓘ** (top right) opens the info modal: quick instructions, supported formats, changelog, cache management, and database status. It fades out as you scroll.
+- **ⓘ** (top right) opens the info modal: quick instructions, supported formats, changelog, cache and saved lists, and database status. It fades out as you scroll.
+- **Recent Lists** sits above Image Resolution and appears once you have fetched something.
 - The progress area shows a phase label, a per-phase counter, and a scrolling log.
 - There is one undocumented option, unlocked by a keyboard sequence, that swaps cards for their showcase, borderless, Universes Beyond, and Secret Lair printings where available. It relies on Scryfall's `/cards/search` endpoint and so may not work on all hosting origins.
+
+---
+
+## What's New in 4.0
+
+**New**
+- Recent Lists: save, reload, rename and export your recent card lists
+- Repeated lines add their quantities together instead of the later line being dropped
+
+**Fixed**
+- First Print resolved to whichever same-day printing happened to be listed first, so cards from sets with alternate treatments (MH2, WAR, and about 17% of all cards) could return a showcase, borderless or retro-frame version. It now takes the lowest collector number, which is always the base printing.
+- The card database updater was broken by Scryfall's move to gzipped JSONL bulk files on 2026-07-20
+- Log entries now say *why* a printing changed rather than flagging every substitution as a warning
+- Swapped printings no longer link to the printing you did not receive
+- A failed database load no longer poisons the rest of the session
+
+**Changed**
+- Index format 3 adds collector numbers — **re-run `update_bulk_data.py` after upgrading**
+- The in-browser bulk download fallback was removed; it could not work after the JSONL migration
+- Proxy PDFs re-encode PNG cards to JPEG, cutting file size 5-10x with no visible difference at print size
+- Decoded card images are capped by memory budget, and oversized visual decklists scale down instead of rendering blank
+- Subresource Integrity on the CDN libraries, and `connect-src` narrowed from any HTTPS host to Scryfall only
+- Squarer corners throughout, and specs and counts moved to a sans face for legibility
 
 ---
 
