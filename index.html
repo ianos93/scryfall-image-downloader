@@ -597,6 +597,26 @@
   .history-btn:hover { border-color: var(--lavender); color: var(--pearl); background: rgba(72,31,111,0.4); }
   .history-btn.icon { padding: 7px 10px; font-size: 12px; letter-spacing: 0; }
   .history-btn.danger:hover { border-color: rgba(255,120,140,0.55); color: rgba(255,150,165,0.95); background: rgba(80,20,35,0.35); }
+  .history-title { display: flex; align-items: center; gap: 7px; min-width: 0; }
+  .history-title .history-label { flex: 0 1 auto; min-width: 0; }
+  .history-edit {
+    flex-shrink: 0;
+    background: none; border: none; padding: 2px 3px;
+    color: rgba(198,182,221,0.5);
+    font-size: 11px; line-height: 1; cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.18s ease, color 0.18s ease;
+  }
+  /* focus-within keeps it reachable by keyboard, where hover never fires */
+  .history-row:hover .history-edit,
+  .history-row:focus-within .history-edit { opacity: 1; }
+  .history-edit:hover { color: var(--pearl); }
+  .history-edit:focus-visible { opacity: 1; outline: 1px solid var(--lavender); outline-offset: 2px; }
+  /* touch devices have no hover state, so keep it permanently visible there */
+  @media (hover: none) {
+    .history-edit { opacity: 0.55; }
+  }
+
   .history-rename {
     width: 100%;
     background: rgba(20,8,35,0.75);
@@ -1307,11 +1327,26 @@ function renderHistory() {
     const main = document.createElement('div');
     main.className = 'history-main';
 
+    const title = document.createElement('div');
+    title.className = 'history-title';
+
     const label = document.createElement('div');
     label.className = 'history-label';
     label.textContent = e.name || e.label || 'Untitled list';   // textContent: names are user input
     if (e.name) label.title = e.label || '';                    // derived name still reachable
-    main.appendChild(label);
+    title.appendChild(label);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'history-edit';
+    editBtn.textContent = '\u270E';
+    editBtn.title = 'Rename this list';
+    editBtn.setAttribute('aria-label', `Rename ${e.name || e.label || 'list'}`);
+    // Passes the title row, not the label: swapping the whole row out takes the
+    // pencil with it, so the editor gets the full width while renaming.
+    editBtn.addEventListener('click', () => beginHistoryRename(e.id, title));
+    title.appendChild(editBtn);
+
+    main.appendChild(title);
 
     const meta = document.createElement('div');
     meta.className = 'history-meta';
@@ -1346,13 +1381,6 @@ function renderHistory() {
     loadBtn.title = 'Put this list back in the card names field';
     loadBtn.addEventListener('click', () => applyHistoryEntry(e.id));
     actions.appendChild(loadBtn);
-
-    const renameBtn = document.createElement('button');
-    renameBtn.className = 'history-btn icon';
-    renameBtn.textContent = '\u270E';
-    renameBtn.title = 'Rename this list';
-    renameBtn.addEventListener('click', () => beginHistoryRename(e.id, label));
-    actions.appendChild(renameBtn);
 
     const dlBtn = document.createElement('button');
     dlBtn.className = 'history-btn icon';
@@ -1414,9 +1442,9 @@ function renameHistoryEntry(id, name) {
   writeHistory(all);
 }
 
-function beginHistoryRename(id, labelEl) {
+function beginHistoryRename(id, titleEl) {
   const entry = readHistory().find(x => x.id === id);
-  if (!entry || !labelEl.isConnected) return;
+  if (!entry || !titleEl.isConnected) return;
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -1424,7 +1452,7 @@ function beginHistoryRename(id, labelEl) {
   input.maxLength = HISTORY_NAME_MAX;
   input.value = entry.name || entry.label || '';
   input.setAttribute('aria-label', 'List name');
-  labelEl.replaceWith(input);
+  titleEl.replaceWith(input);
   input.focus();
   input.select();
 
