@@ -43,6 +43,13 @@
      jumped when results first made it scrollable. */
   html { scrollbar-gutter: stable; }
 
+  /* Browser surfaces in the palette: the default blue focus ring and selection
+     belonged to no part of this design. Keyboard focus only, so mouse clicks stay
+     clean. */
+  :focus-visible { outline: 2px solid var(--lavender); outline-offset: 2px; }
+  textarea:focus-visible { outline: none; }   /* the textarea has its own focus glow */
+  ::selection { background: rgba(156,140,185,0.45); color: var(--pearl); }
+
   body {
     background: var(--bg);
     color: var(--text);
@@ -2775,8 +2782,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   
   document.getElementById('log').innerHTML=''; document.getElementById('log').style.display='none';
   document.getElementById('stats-bar').hidden=true;
-  document.getElementById('dl-btn').disabled=true;
-  document.getElementById('proxy-generate-btn').disabled=true;
+  // Every export waits for the new run: the visual downloads used to stay live and
+  // could save a half-built or empty decklist mid-summon.
+  ['dl-btn', 'proxy-generate-btn', 'download-visual-btn', 'download-visual-pdf-btn']
+    .forEach(id => { document.getElementById(id).disabled = true; });
+  document.getElementById('visual-export-size').textContent = '';
   setProgress(0,allEntries.length);
   
   let ok=0,err=0;

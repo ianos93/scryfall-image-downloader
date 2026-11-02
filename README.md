@@ -436,6 +436,8 @@ Images are **not** cached; only metadata is.
 - Opening or closing the info panel shifted the whole page sideways by the scrollbar's width; so did a short page first becoming scrollable
 - A failed ZIP build left the button stuck on "Packing…", and a visual decklist too large to encode failed silently
 - Downloads released their file link in the same moment they started, which can cancel the download in Firefox and Safari
+- Download Image and Download PDF stayed live while a new list was being summoned, and could save a half-built decklist
+- Keyboard focus rings and text selection use the Luminary palette instead of the browser's default blue
 - The stacked decklist image reserved a full four-card row and a fifteen-card sideboard stack whatever the deck held, leaving a third or more of the image empty. The rotated SIDEBOARD label is now centred on the sideboard column
 
 ---
