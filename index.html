@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cards.scryfall.io; connect-src 'self' https://api.scryfall.com https://cards.scryfall.io; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cards.scryfall.io; connect-src 'self' https://api.scryfall.com https://cards.scryfall.io; object-src 'none'; base-uri 'self';">
 <title>Scryfall · Luminary</title>
 <link rel="icon" type="image/png" href="favicon.png" />
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,700;1,300;1,500&family=Jost:wght@200;400;500&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
         integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
-        integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js"
+        integrity="sha512-plOdviVmws4Y3JAvbnpfKb2hVxKM1lCwsi3vmElYRj+tiDLffZ4FVUj5a8vyKJ9pIgl8JCAHEJ4D1iUKBecswg=="
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
   :root {
@@ -917,14 +917,14 @@
   <div class="float-card">
     <div class="card-label">Image Resolution</div>
     <div class="toggle-group" id="size-options">
-      <button class="toggle" data-size="small" data-desc="146×204px · small thumbnails">Small</button>
-      <button class="toggle" data-size="normal" data-desc="488×680px · standard quality">Normal</button>
-      <button class="toggle" data-size="large" data-desc="672×936px · high quality JPEG">Large</button>
-      <button class="toggle active" data-size="png" data-desc="745×1040px · lossless PNG">PNG</button>
-      <button class="toggle" data-size="art_crop" data-desc="Art only, no card frame">Art Crop</button>
-      <button class="toggle" data-size="border_crop" data-desc="Full card, border trimmed">Border Crop</button>
+      <button class="toggle" data-size="thumb">Small</button>
+      <button class="toggle" data-size="grid">Normal</button>
+      <button class="toggle active" data-size="display">Large</button>
+      <button class="toggle" data-size="png">PNG</button>
+      <button class="toggle" data-size="art">Art Crop</button>
+      <button class="toggle" data-size="crop">Border Crop</button>
     </div>
-    <div class="size-hint" id="size-desc">745×1040px · lossless PNG</div>
+    <div class="size-hint" id="size-desc">672×936px · high quality WebP</div>
     <div class="options-row">
       <button class="option-toggle" id="paper-toggle">
         <span class="option-pip"></span>
@@ -1089,8 +1089,14 @@
 </div>
 
 <script>
-const SIZE_DESCS={small:'146×204px · small thumbnails',normal:'488×680px · standard quality',large:'672×936px · high quality JPEG',png:'745×1040px · lossless PNG',art_crop:'Art only, no card frame',border_crop:'Full card, border trimmed'};
-let selectedSize='png',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
+// Keys are Scryfall's WebP image versions (blog, 2026-10-14). The small, large,
+// border_crop and art_crop JPEGs stop being served after 2027-01-01, and normal is
+// renamed to jpeg, so the old keys are only kept as aliases for saved lists.
+const SIZE_DESCS={thumb:'146×204px · small thumbnails, WebP',grid:'488×680px · standard quality, WebP',display:'672×936px · high quality WebP',png:'744×1040px · lossless PNG · Scryfall stops PNG hotlinking after 1 Jan 2027',art:'Art only, no card frame, WebP',crop:'480×680px · full card, border trimmed, WebP'};
+const LEGACY_SIZES={small:'thumb',normal:'grid',large:'display',art_crop:'art',border_crop:'crop',jpeg:'grid'};
+function imageExt(size){return size==='png'?'png':size==='jpeg'?'jpg':'webp';}
+function sizeLabel(size){const b=document.querySelector(`#size-options [data-size="${size}"]`);return b?b.textContent.trim().toLowerCase():size;}
+let selectedSize='display',fetchedImages=[],isFetching=false,paperOnly=false,firstPrint=false;
 // Declared here rather than in the second <script> block: fetchCardMetadata and
 // applyCardOptions read it, and a cross-block `let` would be in the temporal dead zone.
 let usePremium = false;
@@ -1101,7 +1107,9 @@ let visualDeckData = { main: [], sideboard: [] };
 // cached picks from v3 and earlier can hold an alternate treatment (retro frame,
 // showcase) instead of the base card. Bumping invalidates them rather than serving
 // the old answer for another 7 days.
-const CACHE_VERSION = 'v4';
+// v5: entries are slimmed to the fields Luminary reads, option results are keyed by
+// collector number, and image_uris carry the WebP keys.
+const CACHE_VERSION = 'v5';
 const CACHE_EXPIRY_DAYS = 7;
 const CACHE_KEY_PREFIX = 'scryfall_cache_';
 
@@ -1163,7 +1171,24 @@ function getCachedCard(name, set, number, variant) {
   }
 }
 
+// A full Scryfall card object is ~5-6 KB, mostly prices, legalities and purchase
+// links Luminary never reads, which capped the 5 MB quota at roughly 900 entries.
+// Keeping only what is read back cuts each entry to well under 1 KB.
+const CACHED_CARD_FIELDS = ['id','name','set','collector_number','oracle_id','type_line','cmc',
+  'image_uris','games','digital','promo','released_at','scryfall_uri','prints_search_uri',
+  'layout','frame_effects','border_color','promo_types',
+  '_usedFallback','_usedPaperOnly','_usedFirstPrint','_usedPremium','_nameMismatch'];
+function slimCard(card) {
+  const out = {};
+  for (const k of CACHED_CARD_FIELDS) if (card[k] !== undefined) out[k] = card[k];
+  if (card.card_faces) {
+    out.card_faces = card.card_faces.map(f => ({ name: f.name, type_line: f.type_line, image_uris: f.image_uris }));
+  }
+  return out;
+}
+
 function setCachedCard(name, set, number, cardData, variant) {
+  cardData = slimCard(cardData);
   try {
     const cacheKey = getCacheKey(name, set, number, variant);
     const data = {
@@ -1383,7 +1408,7 @@ function renderHistory() {
     badges.className = 'history-badges';
     const o = e.options || {};
     const tags = [];
-    if (o.size) tags.push(o.size.replace('_', ' '));
+    if (o.size) tags.push(sizeLabel(LEGACY_SIZES[o.size] || o.size));
     if (o.firstPrint) tags.push('first print');
     if (o.paperOnly)  tags.push('paper only');
     if (o.premium)    tags.push('premium');
@@ -1435,11 +1460,13 @@ function applyHistoryEntry(id) {
   if (fn) { fn.textContent = ''; fn.style.display = 'none'; }
 
   const o = e.options || {};
-  if (o.size && SIZE_DESCS[o.size]) {
-    selectedSize = o.size;
+  // Lists saved before the WebP migration carry the old JPEG size keys.
+  const size = LEGACY_SIZES[o.size] || o.size;
+  if (size && SIZE_DESCS[size]) {
+    selectedSize = size;
     document.querySelectorAll('#size-options .toggle').forEach(b =>
-      b.classList.toggle('active', b.dataset.size === o.size));
-    document.getElementById('size-desc').textContent = SIZE_DESCS[o.size] || '';
+      b.classList.toggle('active', b.dataset.size === size));
+    document.getElementById('size-desc').textContent = SIZE_DESCS[size] || '';
   }
   paperOnly = !!o.paperOnly;
   document.getElementById('paper-toggle').classList.toggle('active', paperOnly);
@@ -1586,58 +1613,64 @@ fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
-const SCRYFALL_DELAY_MS = 150; 
-let nextFetchTime = 0;
+// Scryfall's hard limits (docs/api/rate-limits): /cards/search, /cards/named,
+// /cards/random and /cards/collection allow 2 requests/second; everything else on
+// api.scryfall.com allows 10/second. Each class gets its own schedule, with a little
+// headroom over the published interval so clock jitter never tips a burst over.
+const SCRYFALL_SLOW_ENDPOINTS = /^\/cards\/(search|named|random|collection)\b/;
+const SCRYFALL_SLOW_DELAY_MS = 550;
+const SCRYFALL_FAST_DELAY_MS = 110;
+// A 429 locks the client out for 30 seconds, and continuing to send during that
+// window risks a ban, so a 429 pauses every API request rather than just retrying.
+const SCRYFALL_LOCKOUT_MS = 30_000;
+const nextFetchTime = { slow: 0, fast: 0 };
+let apiPausedUntil = 0;
 
-async function rateLimitedFetch(url, options = {}, retries = 3) {
+// Abortable sleep. { once: true } so long runs do not pile listeners onto the signal.
+function sleep(ms, signal) {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+function pauseApi(ms, reason) {
+  const until = Date.now() + ms;
+  if (until <= apiPausedUntil) return;
+  apiPausedUntil = until;
+  log(`⚠︎  ${reason} — pausing Scryfall requests for ${Math.round(ms / 1000)}s.`, 'warn');
+}
+
+async function rateLimitedFetch(url, options = {}, retries = 2) {
   options.signal = currentAbortController?.signal;
-  const slot = Math.max(nextFetchTime, Date.now());
-  nextFetchTime = slot + SCRYFALL_DELAY_MS;
-  const delay = slot - Date.now();
-  
-  if (delay > 0) {
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, delay);
-      if(options.signal) {
-        options.signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new DOMException('Aborted', 'AbortError'));
-        });
-      }
-    });
-  }
+  options.headers = { Accept: 'application/json', ...(options.headers || {}) };
+  const bucket = SCRYFALL_SLOW_ENDPOINTS.test(new URL(url).pathname) ? 'slow' : 'fast';
+  const slot = Math.max(nextFetchTime[bucket], apiPausedUntil, Date.now());
+  nextFetchTime[bucket] = slot + (bucket === 'slow' ? SCRYFALL_SLOW_DELAY_MS : SCRYFALL_FAST_DELAY_MS);
+  await sleep(slot - Date.now(), options.signal);
   if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   let res;
   try {
     res = await fetch(url, options);
   } catch (e) {
-    // Catch CORS network errors caused by CDN rate-limiting
+    // A 429 from Scryfall's edge can arrive without CORS headers, which the browser
+    // reports as a bare TypeError rather than a status. Treat it as the lockout it
+    // most likely is: retrying a couple of seconds later only extends the ban window.
     if (e.name === 'TypeError' && retries > 0) {
-      console.warn(`[RateLimit/CORS] Network error caught for ${url}. Backing off 2s, ${retries} retries left.`);
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(resolve, 2000);
-        if (options.signal) options.signal.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); });
-      });
-      if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      pauseApi(SCRYFALL_LOCKOUT_MS, 'Network error from Scryfall (often a rate limit)');
       return rateLimitedFetch(url, options, retries - 1);
     }
     throw e;
   }
 
   if (res.status === 429 && retries > 0) {
-    const retryAfter = parseInt(res.headers.get('Retry-After') || '2', 10);
-    console.warn(`[RateLimit] 429 received. Backing off ${retryAfter}s, ${retries} retries left.`);
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, retryAfter * 1000);
-      if (options.signal) {
-        options.signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new DOMException('Aborted', 'AbortError'));
-        });
-      }
-    });
-    if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10) * 1000;
+    pauseApi(Math.max(retryAfter, SCRYFALL_LOCKOUT_MS), 'Scryfall rate limit reached');
     return rateLimitedFetch(url, options, retries - 1);
   }
   return res;
@@ -1649,19 +1682,14 @@ async function cdnFetch(url, options = {}, retries = 3) {
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
       // Exponential back-off: 500ms, 1000ms, 2000ms
-      const backoff = Math.min(500 * Math.pow(2, attempt - 1), 4000);
-      await new Promise((resolve, reject) => {
-        const t = setTimeout(resolve, backoff);
-        if (options.signal) options.signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted','AbortError')); });
-      });
-      if (options.signal?.aborted) throw new DOMException('Aborted','AbortError');
+      await sleep(Math.min(500 * Math.pow(2, attempt - 1), 4000), options.signal);
     }
     try {
       const res = await fetch(url, options);
       // Retry on 429 or 5xx server errors; pass everything else through
       if (res.status === 429 || res.status >= 500) {
         const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
-        if (retryAfter > 0) await new Promise(r => setTimeout(r, retryAfter * 1000));
+        await sleep(retryAfter * 1000, options.signal);
         lastErr = new Error(`HTTP ${res.status}`);
         continue;
       }
@@ -1924,6 +1952,10 @@ function isBareSetCode(s) {
 }
 function isCollectorNum(s) { return /^\d+[a-zA-Z]?$/.test(s); }
 
+// A bare leading number is a quantity unless it is implausibly large for one, so a
+// name that starts with a number ("1996 World Champion") survives. "4x" is explicit.
+const MAX_BARE_QUANTITY = 250;
+
 function parseLine(raw) {
   let l = raw.trim();
   l = l.replace(/^[\/\#\*\-\s]+/, '').trim();
@@ -1934,7 +1966,7 @@ function parseLine(raw) {
     l = l.replace(/^\d+\s*[xX×]\s*/, '');
   } else {
     const bareQtyMatch = l.match(/^(\d+)\s+/);
-    if (bareQtyMatch) {
+    if (bareQtyMatch && parseInt(bareQtyMatch[1], 10) <= MAX_BARE_QUANTITY) {
       quantity = parseInt(bareQtyMatch[1], 10);
       l = l.replace(/^\d+\s+/, '');
     }
@@ -1958,14 +1990,19 @@ function parseLine(raw) {
 
   const parts = l.split(/\s+/).filter(Boolean);
   const nameParts = [];
+  // Bare set codes are recognised by being ALL-CAPS, which only means something when
+  // the name around them is not. On a line typed entirely in capitals ("LIGHTNING
+  // BOLT") every word looks like a set code, so only codes with a digit (M10, MH3,
+  // 6ED) are taken there; letters-only codes need brackets on such a line.
+  const allCaps = !/[a-z]/.test(l);
 
   let lastNameIndex = parts.length - 1;
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
-    if (!number && isCollectorNum(p)) { 
-      number = p; lastNameIndex = i - 1; continue; 
+    if (!number && isCollectorNum(p)) {
+      number = p; lastNameIndex = i - 1; continue;
     }
-    if (!set && isBareSetCode(p) && i > 0) { 
+    if (!set && isBareSetCode(p) && i > 0 && (!allCaps || /\d/.test(p))) {
       set = p.toLowerCase(); lastNameIndex = i - 1; continue; 
     }
     nameParts.unshift(...parts.slice(0, i + 1));
@@ -1980,13 +2017,6 @@ function parseLine(raw) {
   return { raw, name, set, number, quantity };
 }
 
-function buildUrl(entry, fuzzy=false) {
-  const method = fuzzy ? 'fuzzy' : 'exact';
-  if (entry.set && entry.number && !entry.name) return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  if (entry.set && entry.number && entry.name) return `https://api.scryfall.com/cards/${entry.set}/${entry.number}`;
-  if (entry.set && entry.name) return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}&set=${entry.set}`;
-  return `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}`;
-}
 
 const DECK_HEADERS = /^(deck|main\s?deck|sideboard|side\s?board|side|sb|s\.b\.?|about|commander|companion|maybeboard|maybe\s?board|maybe|lands?|creatures?|spells?|instants?|sorceries|enchantments?|artifacts?|planeswalkers?):?$/i;
 function isSideboardHeader(line) { return /^(sideboard|side\s?board|side|sb|s\.b\.?)\s*:?\s*(\(\d+\))?$/i.test(line); }
@@ -2049,17 +2079,31 @@ function parseNamesWithSections(raw){
 }
 
 function getImg(card, size) {
-  // Explicit image_uris present (API-fetched cards)
-  if (card.image_uris) return card.image_uris[size] || null;
-  // DFC with per-face image_uris (API-fetched)
-  if (card.card_faces?.[0]?.image_uris) return card.card_faces[0].image_uris[size] || null;
-  // Bulk-data cards: reconstruct from Scryfall's deterministic URL pattern.
-  // Pattern: https://cards.scryfall.io/{size}/front/{id[0]}/{id[1]}/{id}.{ext}
+  // Explicit image_uris present (API-fetched cards), or per-face for DFCs
+  const uris = card.image_uris || card.card_faces?.[0]?.image_uris;
+  if (uris?.[size]) return uris[size];
+  // Bulk-data cards, and anything cached before a key existed: reconstruct from
+  // Scryfall's deterministic URL pattern. The WebP versions use the same layout
+  // with their own folder name, except jpeg, which still lives under normal/.
+  // Pattern: https://cards.scryfall.io/{folder}/front/{id[0]}/{id[1]}/{id}.{ext}
   if (card.id) {
-    const ext = size === 'png' ? 'png' : 'jpg';
-    return `https://cards.scryfall.io/${size}/front/${card.id[0]}/${card.id[1]}/${card.id}.${ext}`;
+    const folder = size === 'jpeg' ? 'normal' : size;
+    return `https://cards.scryfall.io/${folder}/front/${card.id[0]}/${card.id[1]}/${card.id}.${imageExt(size)}`;
   }
   return null;
+}
+
+// Strip accents and case so "Lim-Dul's Vault" and "Lim-Dûl's Vault" compare equal.
+function normName(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}
+// True when a card fetched by set + collector number is the card the line named,
+// checked against the full name and each face, since a line only needs the front.
+function cardMatchesName(card, name) {
+  if (!name) return true;
+  const want = normName(name);
+  const names = [card.name, ...(card.card_faces || []).map(f => f.name)];
+  return names.some(n => normName(n) === want || normName(n).split(' // ')[0] === want);
 }
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
@@ -2127,45 +2171,123 @@ function errText(data, res, fallback) {
   return data?.details || fallback || `HTTP ${res.status} ${res.statusText || 'Error'}`;
 }
 
-async function fetchCardMetadata(entry) {
-  const variant = usePremium ? 'premium' : 'default';
-  const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
-  if (cachedCard) { 
-    cachedCard._fromCache = true; 
-    cachedCard._originalEntry = entry; // <--- FIX: Overwrite cached quantity with current request
-    return cachedCard; 
-  }
-  
-  let card = null, usedFallback = false;
-  const url = buildUrl(entry);
-  const res = await rateLimitedFetch(url, { });
-  const data = await readJson(res);
+function metadataVariant() { return usePremium ? 'premium' : 'default'; }
 
-  if (res.ok) { card = data; } 
-  else {
-    if (res.status === 429 || res.status >= 500) {
-      throw new Error(errText(data, res));
-    }
+function isMetadataCached(entry) {
+  return getCachedCard(entry.name, entry.set, entry.number, metadataVariant()) !== null;
+}
 
-    const url2 = buildUrl(entry, true);
-    if (url2 !== url) {
-      const res2 = await rateLimitedFetch(url2, { });
-      const data2 = await readJson(res2);
-      if (res2.ok) {
-        card = data2;
-      } else if (res2.status === 429 || res2.status >= 500) {
-        throw new Error(errText(data2, res2));
+// ── Batch lookup ──────────────────────────────────────────────────────────────
+// /cards/collection resolves up to 75 lines per request under the same 2/second
+// limit as /cards/named, so a 500-card list costs 7 requests instead of 500+. It
+// matches names exactly, ignoring case and accents, and accepts front-face names on
+// their own. Anything it misses (typos, set codes that do not exist) is left for the
+// per-card fuzzy lookup in resolveCardSingly.
+const COLLECTION_BATCH = 75;
+
+function collectionIdentifier(entry) {
+  if (entry.set && entry.number) return { set: entry.set, collector_number: entry.number };
+  if (entry.set && entry.name)   return { name: entry.name, set: entry.set };
+  if (entry.name)                return { name: entry.name };
+  return null;
+}
+
+// not_found echoes identifiers back; compare them without relying on key order or case.
+function identifierKey(id) {
+  return JSON.stringify(Object.keys(id).sort().map(k => [k, String(id[k]).toLowerCase()]));
+}
+
+async function fetchCollection(indexedEntries, onBatch) {
+  const found = new Map();
+  for (let start = 0; start < indexedEntries.length; start += COLLECTION_BATCH) {
+    const batch = indexedEntries.slice(start, start + COLLECTION_BATCH)
+      .map(({ i, entry }) => ({ i, id: collectionIdentifier(entry) }))
+      .filter(b => b.id);
+    if (batch.length) {
+      const res = await rateLimitedFetch('https://api.scryfall.com/cards/collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifiers: batch.map(b => b.id) })
+      });
+      const data = await readJson(res);
+      if (res.ok && data) {
+        // Results come back in request order with the misses removed, and the misses
+        // are listed in not_found. Walking both in step maps each result to its line.
+        // If the counts disagree that mapping cannot be trusted, so the whole batch
+        // falls through to per-card lookups instead of risking a wrong card.
+        const cards = data.data || [];
+        const missing = (data.not_found || []).map(identifierKey);
+        if (cards.length + missing.length === batch.length) {
+          let c = 0;
+          for (const b of batch) {
+            const m = missing.indexOf(identifierKey(b.id));
+            if (m !== -1) { missing.splice(m, 1); continue; }
+            found.set(b.i, cards[c++]);
+          }
+        }
+      } else {
+        console.warn(`[Luminary] /cards/collection failed: ${errText(data, res)}. Falling back to per-card lookups.`);
       }
     }
-    
-    if (!card && entry.name && (entry.set || entry.number)) {
-      const res3 = await rateLimitedFetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`,{ });
-      const data3 = await readJson(res3);
-      if (!res3.ok) throw new Error(errText(data3, res3, 'Not found'));
-      card = data3; usedFallback = true;
-    } else if (!card) {
-      throw new Error(errText(data, res, 'Not found'));
+    onBatch?.(Math.min(start + COLLECTION_BATCH, indexedEntries.length));
+  }
+  return found;
+}
+
+async function getScryfallJson(url) {
+  const res = await rateLimitedFetch(url);
+  const data = await readJson(res);
+  if (res.status === 429 || res.status >= 500) throw new Error(errText(data, res));
+  return { ok: res.ok, data, res };
+}
+
+// Per-card fallback, in order: set + collector number (checked against the name),
+// exact then fuzzy name within the set, then fuzzy name alone. usedFallback means
+// part of the request (the set, or the number) could not be honoured.
+async function resolveCardSingly(entry, skipNumber = false) {
+  let numberMismatch = null, last = null;
+  if (entry.set && entry.number && !skipNumber) {
+    last = await getScryfallJson(`https://api.scryfall.com/cards/${entry.set}/${encodeURIComponent(entry.number)}`);
+    if (last.ok) {
+      if (cardMatchesName(last.data, entry.name)) return { card: last.data, usedFallback: false };
+      numberMismatch = last.data.name;
     }
+  }
+  if (!entry.name) throw new Error(errText(last?.data, last?.res || { status: 404 }, 'Not found'));
+
+  const named = (method, withSet) =>
+    `https://api.scryfall.com/cards/named?${method}=${encodeURIComponent(entry.name)}${withSet ? `&set=${entry.set}` : ''}`;
+  if (entry.set) {
+    for (const method of ['exact', 'fuzzy']) {
+      last = await getScryfallJson(named(method, true));
+      if (last.ok) return { card: last.data, usedFallback: !!entry.number, numberMismatch };
+    }
+  }
+  last = await getScryfallJson(named('fuzzy', false));
+  if (!last.ok) throw new Error(errText(last.data, last.res, 'Not found'));
+  return { card: last.data, usedFallback: !!(entry.set || entry.number), numberMismatch };
+}
+
+// prefetched is this line's /cards/collection result, if it had one.
+async function fetchCardMetadata(entry, prefetched = null) {
+  const variant = metadataVariant();
+  const cachedCard = getCachedCard(entry.name, entry.set, entry.number, variant);
+  if (cachedCard) {
+    cachedCard._fromCache = true;
+    cachedCard._originalEntry = entry; // <--- FIX: Overwrite cached quantity with current request
+    return cachedCard;
+  }
+
+  let card = prefetched, usedFallback = false, numberMismatch = null;
+  // A set + collector number names a slot, not a card: "Island (UNF) 240" is a Plains.
+  // When the slot holds something else, keep the name and set and drop the number.
+  if (card && entry.set && entry.number && !cardMatchesName(card, entry.name)) {
+    numberMismatch = card.name;
+    card = null;
+  }
+  if (!card) {
+    const r = await resolveCardSingly(entry, !!numberMismatch);
+    card = r.card; usedFallback = r.usedFallback; numberMismatch = numberMismatch || r.numberMismatch || null;
   }
 
   if (usePremium && card && card.name) {
@@ -2174,6 +2296,7 @@ async function fetchCardMetadata(entry) {
   }
 
   card._usedFallback = usedFallback;
+  card._nameMismatch = numberMismatch;
   card._fromCache = false;
   card._originalEntry = entry;
   setCachedCard(entry.name, entry.set, entry.number, card, variant);
@@ -2182,9 +2305,10 @@ async function fetchCardMetadata(entry) {
 
 async function fetchAllPrints(card) {
   // This is a last-resort fallback only used when the local bulk index is unavailable.
-  // NOTE: Scryfall's /cards/search endpoint blocks cross-origin requests from some
-  // hosting origins (e.g. GitHub Pages). Run update_bulk_data.py to build the local
-  // index and avoid this path entirely.
+  // /cards/search is limited to 2 requests/second, and one paginated search per card
+  // reaches that quickly. (Its rate-limit responses can lack CORS headers, which is
+  // why this used to look like a CORS block.) Run update_bulk_data.py to build the
+  // local index and avoid this path entirely.
   if (!card.prints_search_uri) return null;
   if (card.id && printsCache.has(card.id)) return printsCache.get(card.id);
   try {
@@ -2205,21 +2329,24 @@ async function fetchAllPrints(card) {
     if (card.id && prints) printsCache.set(card.id, prints);
     return prints;
   } catch (e) {
-    // Likely a CORS error from /cards/search — return null so the caller
-    // falls back to the original card rather than crashing.
-    if (!fetchAllPrints._corsWarned) {
-      fetchAllPrints._corsWarned = true;
-      console.warn('[Luminary] fetchAllPrints blocked (likely CORS). Add data/prints_index.json to avoid API fallback.');
+    // Usually a rate-limited /cards/search — return null so the caller falls back
+    // to the original card rather than crashing. A cancel still cancels.
+    if (e.name === 'AbortError') throw e;
+    if (!fetchAllPrints._warned) {
+      fetchAllPrints._warned = true;
+      console.warn(`[Luminary] fetchAllPrints failed (${e.message}). Add data/prints_index.json to avoid API fallback.`);
     }
     return null;
   }
 }
 
-// Bulk-index entries carry no scryfall_uri and no collector number, so an exact
-// /card/:set/:number permalink cannot be built. A set-scoped exact-name search is a
-// documented public URL that always lands on the right printing (or on that set's
-// list of arts), which beats linking to a printing the user did not receive.
-function buildPrintingUrl(name, set) {
+// Bulk-index entries carry no scryfall_uri. Format 3 indexes have the collector
+// number, which gives the exact /card/:set/:number permalink. Without it, a
+// set-scoped exact-name search is a documented public URL that always lands on the
+// right printing (or on that set's list of arts), which beats linking to a printing
+// the user did not receive.
+function buildPrintingUrl(name, set, collectorNumber) {
+  if (set && collectorNumber) return `https://scryfall.com/card/${set}/${encodeURIComponent(collectorNumber)}`;
   if (!name) return null;
   const q = set ? `!"${name}" set:${set}` : `!"${name}"`;
   return `https://scryfall.com/search?q=${encodeURIComponent(q)}&unique=prints`;
@@ -2228,8 +2355,11 @@ function buildPrintingUrl(name, set) {
 async function applyCardOptions(card, options) {
   const optSuffix = (options.paperOnly ? '_paper' : '') + (options.firstPrint ? '_first' : '');
   const variant = (usePremium ? 'premium' : 'default') + optSuffix;
+  // Keyed by the exact printing the options start from. Name + set alone made two
+  // printings in one set (Island UNF 236 and 241) share one cached answer.
+  const cacheNumber = card.collector_number || null;
 
-  const cachedOptionCard = getCachedCard(card.name, card.set, null, variant);
+  const cachedOptionCard = getCachedCard(card.name, card.set, cacheNumber, variant);
   if (cachedOptionCard) {
     cachedOptionCard._fromCache = true;
     cachedOptionCard._originalEntry = card._originalEntry; // <--- FIX: Ensure options caching passes quantity forward
@@ -2297,30 +2427,54 @@ async function applyCardOptions(card, options) {
   if (!modifiedCard.scryfall_uri) {
     modifiedCard.scryfall_uri = modifiedCard.id === card.id
       ? card.scryfall_uri
-      : buildPrintingUrl(modifiedCard.name || card.name, modifiedCard.set);
+      : buildPrintingUrl(modifiedCard.name || card.name, modifiedCard.set, modifiedCard.collector_number);
   }
 
   modifiedCard._usedFallback = usedFallback;
+  modifiedCard._nameMismatch = card._nameMismatch || null;
   modifiedCard._usedPaperOnly = usedPaperOnly;
   modifiedCard._usedFirstPrint = usedFirstPrint;
   modifiedCard._fromCache = false;
-  modifiedCard._originalEntry = card._originalEntry; 
+  modifiedCard._originalEntry = card._originalEntry;
 
-  setCachedCard(card.name, card.set, null, modifiedCard, variant);
+  setCachedCard(card.name, card.set, cacheNumber, modifiedCard, variant);
   return modifiedCard;
 }
 
+// Scryfall stops allowing PNG hotlinking after 2027-01-01. When a PNG is refused,
+// the largest WebP is the closest substitute, so take it rather than fail the card.
+// After one refusal the rest of the session skips straight to WebP, so a big list
+// does not pay the retry back-off on every card.
+const PNG_FALLBACK_SIZE = 'display';
+let pngRefused = false;
+
 async function fetchCardImage(card, size) {
-  const imgUrl = getImg(card, size);
+  let usedSize = size === 'png' && pngRefused ? PNG_FALLBACK_SIZE : size;
+  let imgUrl = getImg(card, usedSize);
   if (!imgUrl) throw new Error('No image for this size');
-  const ir = await cdnFetch(imgUrl);
+  let ir = await cdnFetch(imgUrl).catch(e => { if (usedSize !== 'png' || e.name === 'AbortError') throw e; return null; });
+  if (usedSize === 'png' && !ir?.ok) {
+    // A refusal (403, or a blocked request with no response) is a policy, so it
+    // applies to every card. Anything else, such as one missing PNG, is just this card.
+    if (!ir || ir.status === 403) {
+      if (!pngRefused) log('⚠︎  Scryfall refused the PNG images — using Large WebP instead.', 'warn');
+      pngRefused = true;
+    }
+    usedSize = PNG_FALLBACK_SIZE;
+    imgUrl = getImg(card, usedSize);
+    ir = await cdnFetch(imgUrl);
+  }
   if (!ir.ok) throw new Error(`Image fetch failed: ${ir.status} ${ir.statusText}`);
   const blob = await ir.blob();
-  const ext = size === 'png' ? 'png' : 'jpg';
+  // Collector number keeps two printings from one set (Island UNF 236 and 241) from
+  // overwriting each other in the ZIP.
+  const cn = card.collector_number ? `_${sanitize(String(card.collector_number))}` : '';
   return {
+    id: card.id,
     name: card.name,
     blob: blob,
-    filename: `${sanitize(card.name)}_${card.set}.${ext}`,
+    filename: `${sanitize(card.name)}_${card.set}${cn}.${imageExt(usedSize)}`,
+    pngFallback: usedSize !== size,
     set: card.set,
     quantity: card._originalEntry?.quantity || 1,
     type_line: card.type_line || '',
@@ -2394,13 +2548,25 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     updatePhaseBadge('metadata', 'active', 0);
     
     const cardMetadataMap = new Map();
+
+    // Everything not already cached goes to /cards/collection first, 75 at a time.
+    // The per-card queue below then only touches the network for lines the batch
+    // could not resolve, or for Premium.
+    const uncached = allEntries.map((entry, i) => ({ i, entry })).filter(({ entry }) => !isMetadataCached(entry));
+    let prefetched = new Map();
+    if (uncached.length) {
+      prefetched = await fetchCollection(uncached, done => {
+        setProgress(Math.min(done, uncached.length), allEntries.length);
+      });
+    }
+
     const metadataQueue = new FetchQueue(3);
-    
+
     const metadataPromises = allEntries.map((entry, i) => {
       return metadataQueue.add(async () => {
         try {
           if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-          const card = await fetchCardMetadata(entry);
+          const card = await fetchCardMetadata(entry, prefetched.get(i) || null);
           return { index: i, card, error: null };
         } catch (e) { return { index: i, card: null, error: e.message || e.name }; }
       });
@@ -2517,7 +2683,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         err++;
       } else {
         const { imageData, section, card } = result;
-        fetchedImages.push({ name: imageData.name, blob: imageData.blob, filename: imageData.filename });
+        // The same printing in main and sideboard is one file, not two with one name.
+        if (!fetchedImages.some(f => f.filename === imageData.filename)) {
+          fetchedImages.push({ name: imageData.name, blob: imageData.blob, filename: imageData.filename });
+        }
         visualDeckData[section].push(imageData);
         // Yellow is reserved for a request we could not honour exactly. Options the
         // user switched on are reported in blue, so First Print doing its job no
@@ -2525,10 +2694,15 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         const notes = [];
         if (card._usedFirstPrint) notes.push(' ✦ first print');
         if (card._usedPaperOnly)  notes.push(' ✦ paper print');
-        const fallbackNote = card._usedFallback ? ` ⚠︎ alt print used` : notes.join('');
-        const cacheNote = card._fromCache ? ' \u2726 cached' : '';
+        const requested = card._originalEntry || {};
+        const fallbackNote = card._nameMismatch
+          ? ` ⚠︎ ${requested.set?.toUpperCase()} #${requested.number} is ${card._nameMismatch}, matched by name`
+          : card._usedFallback ? ` ⚠︎ alt print used` : notes.join('');
+        const cacheNote = card._fromCache ? ' ✦ cached' : '';
         const premiumNote = card._usedPremium ? ' ✦ premium' : '';
-        log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${cacheNote}`, card._usedFallback ? 'warn' : 'ok');
+        const pngNote = imageData.pngFallback ? ' ⚠︎ WebP, PNG unavailable' : '';
+        const warn = card._usedFallback || imageData.pngFallback;
+        log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${pngNote}${cacheNote}`, warn ? 'warn' : 'ok');
         ok++;
       }
       
@@ -2558,7 +2732,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       const allCards = [...visualDeckData.main, ...visualDeckData.sideboard];
       
       allCards.forEach(card => {
-        const cardKey = `${card.name}|${card.set}`;
+        const cardKey = card.filename;   // one tile per printing, matching the ZIP
         if (seenCards.has(cardKey)) return;
         seenCards.add(cardKey);
         
@@ -2904,8 +3078,12 @@ function updateProxyLayoutInfo() {
 }
 
 // ── Preview canvas ────────────────────────────────────────────────────────────
-let proxyPreviewPages = []; 
+// Pages are drawn one at a time, when shown. Drawing every page up front cost ~32 MB
+// of canvas per A4 page on a 2x display, so a 500-card deck held well over a gigabyte.
+// proxyRenderGen invalidates a draw that a newer settings change has overtaken, so a
+// slow render can never paint stale cards over the current layout.
 let proxyPreviewCurrentPage = 0;
+let proxyRenderGen = 0;
 
 async function renderProxyPreview(cardList) {
   const canvas = document.getElementById('proxy-preview-canvas');
@@ -2915,9 +3093,9 @@ async function renderProxyPreview(cardList) {
   const nextBtn = document.getElementById('proxy-next');
 
   const { cols, rows, perPage } = proxyCalcLayout(proxySize, proxyGap);
-  const totalPages = perPage > 0 ? Math.ceil(cardList.length / perPage) : 1;
+  const totalPages = Math.max(1, perPage > 0 ? Math.ceil(cardList.length / perPage) : 1);
+  const gen = ++proxyRenderGen;
 
-  proxyPreviewPages = [];
   proxyPreviewCurrentPage = 0;
 
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -2931,7 +3109,8 @@ async function renderProxyPreview(cardList) {
   const cw    = gridW + PREVIEW_PAD * 2;
   const ch    = gridH + PREVIEW_PAD * 2;
 
-  for (let p = 0; p < totalPages; p++) {
+  // Draws one page off-screen; returns null if a newer render started meanwhile.
+  async function drawPage(p) {
     const oc  = document.createElement('canvas');
     oc.width  = cw;
     oc.height = ch;
@@ -2954,6 +3133,7 @@ async function renderProxyPreview(cardList) {
       if (i < pageCards.length) {
         try {
           const img = await loadImage(pageCards[i].blob);
+          if (gen !== proxyRenderGen) return null;
           ctx.drawImage(img, x, y, cardW, cardH);
           ctx.strokeStyle = 'rgba(0,0,0,0.12)';
           ctx.lineWidth = 0.5;
@@ -2965,8 +3145,7 @@ async function renderProxyPreview(cardList) {
         drawEmptySlot(ctx, x, y, cardW, cardH);
       }
     }
-
-    proxyPreviewPages.push(oc);
+    return gen === proxyRenderGen ? oc : null;
   }
 
   if (totalPages > 1) {
@@ -2975,7 +3154,7 @@ async function renderProxyPreview(cardList) {
     navEl.style.display = 'none';
   }
 
-  function showPage(idx) {
+  async function showPage(idx) {
     proxyPreviewCurrentPage = idx;
     label.textContent = `${idx + 1} / ${totalPages}`;
     prevBtn.style.opacity = idx === 0 ? '0.3' : '1';
@@ -2984,12 +3163,13 @@ async function renderProxyPreview(cardList) {
     nextBtn.style.pointerEvents = idx === totalPages - 1 ? 'none' : 'auto';
 
     canvas.style.opacity = '0';
-    setTimeout(() => {
-      canvas.width  = proxyPreviewPages[idx].width;
-      canvas.height = proxyPreviewPages[idx].height;
-      canvas.getContext('2d').drawImage(proxyPreviewPages[idx], 0, 0);
-      canvas.style.opacity = '1';
-    }, 150);
+    const [page] = await Promise.all([drawPage(idx), new Promise(r => setTimeout(r, 150))]);
+    // Dropped if superseded by a newer render, or if the user paged on meanwhile.
+    if (!page || proxyPreviewCurrentPage !== idx) return;
+    canvas.width  = page.width;
+    canvas.height = page.height;
+    canvas.getContext('2d').drawImage(page, 0, 0);
+    canvas.style.opacity = '1';
   }
 
   const newPrev = prevBtn.cloneNode(true);
@@ -3019,9 +3199,7 @@ async function renderProxyPreview(cardList) {
     });
   });
 
-  if (proxyPreviewPages.length > 0) {
-    showPage(0);
-  }
+  showPage(0);
 }
 
 function drawEmptySlot(ctx, x, y, w, h) {
@@ -3074,9 +3252,10 @@ const PROXY_JPEG_QUALITY = 0.92;
 let proxyEncodeCanvas = null;
 
 async function proxyImageData(blob) {
-  // Already a JPEG (Small / Normal / Large / the crops): pass straight through.
-  // Re-encoding would add generation loss for no size benefit.
-  if (PROXY_JPEG_QUALITY === null || blob.type !== 'image/png') {
+  // Already a JPEG: pass straight through, since re-encoding would add generation
+  // loss for no size benefit. WebP (every size but PNG since Scryfall's migration) is
+  // re-encoded like PNG: JPEG is the one format every PDF reader handles natively.
+  if (blob.type === 'image/jpeg' || (PROXY_JPEG_QUALITY === null && blob.type === 'image/png')) {
     const dataUrl = await blobToDataURL(blob);
     return { dataUrl, fmt: dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG' };
   }
@@ -3091,7 +3270,7 @@ async function proxyImageData(blob) {
   cx.fillStyle = '#ffffff';
   cx.fillRect(0, 0, c.width, c.height);
   cx.drawImage(img, 0, 0);
-  return { dataUrl: c.toDataURL('image/jpeg', PROXY_JPEG_QUALITY), fmt: 'JPEG' };
+  return { dataUrl: c.toDataURL('image/jpeg', PROXY_JPEG_QUALITY ?? 0.92), fmt: 'JPEG' };
 }
 
 function blobToDataURL(blob) {
@@ -3119,58 +3298,65 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   progBar.style.width = '0%';
   progPhase.textContent = 'Building PDF';
 
-  const { jsPDF } = window.jspdf;
-  const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
+  // finally, so a failure (most often running out of memory on a very large set)
+  // cannot leave the button disabled on "Generating…" for the rest of the session.
+  try {
+    const { jsPDF } = window.jspdf;
+    const { cols, rows, perPage, page } = proxyCalcLayout(proxySize, proxyGap);
 
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: proxySize === 'a4' ? 'a4' : 'a3'
-  });
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: proxySize === 'a4' ? 'a4' : 'a3'
+    });
 
-  const total = cardList.length;
-  let processed = 0;
+    const total = cardList.length;
+    let processed = 0;
 
-  for (let i = 0; i < cardList.length; i++) {
-    const posInPage = i % perPage;
+    for (let i = 0; i < cardList.length; i++) {
+      const posInPage = i % perPage;
 
-    if (posInPage === 0 && i > 0) {
-      doc.addPage(proxySize === 'a4' ? 'a4' : 'a3', 'portrait');
+      if (posInPage === 0 && i > 0) {
+        doc.addPage(proxySize === 'a4' ? 'a4' : 'a3', 'portrait');
+      }
+
+      const col = posInPage % cols;
+      const row = Math.floor(posInPage / cols);
+
+      const gridW = cols * CARD_W_MM + (cols - 1) * proxyGap;
+      const gridH = rows * CARD_H_MM + (rows - 1) * proxyGap;
+      const startX = (page.w - gridW) / 2;
+      const startY = (page.h - gridH) / 2;
+
+      const x = startX + col * (CARD_W_MM + proxyGap);
+      const y = startY + row * (CARD_H_MM + proxyGap);
+
+      try {
+        const { dataUrl, fmt } = await proxyImageData(cardList[i].blob);
+        doc.addImage(dataUrl, fmt, x, y, CARD_W_MM, CARD_H_MM);
+      } catch (e) {
+        console.warn(`[Proxy] Failed to add image for ${cardList[i].name}:`, e);
+      }
+
+      processed++;
+      const pct = Math.round((processed / total) * 100);
+      progBar.style.width = pct + '%';
+      progCount.textContent = `${processed} / ${total}`;
+
+      if (processed % 5 === 0) await new Promise(r => setTimeout(r, 0));
     }
 
-    const col = posInPage % cols;
-    const row = Math.floor(posInPage / cols);
-
-    const gridW = cols * CARD_W_MM + (cols - 1) * proxyGap;
-    const gridH = rows * CARD_H_MM + (rows - 1) * proxyGap;
-    const startX = (page.w - gridW) / 2;
-    const startY = (page.h - gridH) / 2;
-
-    const x = startX + col * (CARD_W_MM + proxyGap);
-    const y = startY + row * (CARD_H_MM + proxyGap);
-
-    try {
-      const { dataUrl, fmt } = await proxyImageData(cardList[i].blob);
-      doc.addImage(dataUrl, fmt, x, y, CARD_W_MM, CARD_H_MM);
-    } catch (e) {
-      console.warn(`[Proxy] Failed to add image for ${cardList[i].name}:`, e);
-    }
-
-    processed++;
-    const pct = Math.round((processed / total) * 100);
-    progBar.style.width = pct + '%';
-    progCount.textContent = `${processed} / ${total}`;
-
-    if (processed % 5 === 0) await new Promise(r => setTimeout(r, 0));
+    progPhase.textContent = 'Saving…';
+    doc.save(`proxy-${proxySize}-${Date.now()}.pdf`);
+  } catch (e) {
+    console.error('[Proxy] PDF generation failed:', e);
+    alert(`The PDF could not be built: ${e.message || e}. Try fewer cards, or a smaller image resolution.`);
+  } finally {
+    progSection.style.display = 'none';
+    progBar.style.width = '0%';
+    btn.disabled = false;
+    btn.innerHTML = '⎙ &nbsp; Generate PDF';
   }
-
-  progPhase.textContent = 'Saving…';
-  doc.save(`proxy-${proxySize}-${Date.now()}.pdf`);
-
-  progSection.style.display = 'none';
-  progBar.style.width = '0%';
-  btn.disabled = false;
-  btn.innerHTML = '⎙ &nbsp; Generate PDF';
 });
 
 </script>
@@ -3200,7 +3386,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
     <h3>Luminary</h3>
-    <div class="version">VERSION 4.0</div>
+    <div class="version">VERSION 4.1</div>
     
     <div class="modal-section">
       <h4>Quick Instructions</h4>
@@ -3229,7 +3415,15 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     </div>
     
     <div class="modal-section">
-      <h4>What's New in v4.0</h4>
+      <h4>What's New in v4.1</h4>
+      <ul>
+        <li>Images now use Scryfall's WebP versions, ahead of most JPEGs being retired on 1 January 2027. Large is the new default</li>
+        <li>Card lookups are batched 75 at a time and stay inside Scryfall's rate limits, so big lists are much faster</li>
+        <li>Two printings from the same set no longer overwrite each other in the ZIP or the cache</li>
+        <li>A set + collector number that points at a different card is caught and matched by name instead</li>
+        <li>Lines typed in all capitals, and names that start with a number, parse correctly</li>
+      </ul>
+      <h4 style="margin-top:16px;">v4.0</h4>
       <ul>
         <li>Recent Lists — your last 20 fetched lists, saved in this browser. Reload, rename, or download any of them as .txt</li>
         <li>First Print now resolves to the base printing, not a same-day showcase or retro-frame variant</li>
@@ -3296,7 +3490,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
       "
       onmouseover="this.style.background='rgba(100,50,160,0.5)'; this.style.borderColor='rgba(198,182,221,0.5)'; this.style.color='var(--pearl)';"
       onmouseout="this.style.background='rgba(72,31,111,0.35)'; this.style.borderColor='rgba(156,140,185,0.3)'; this.style.color='var(--orchid)';"
-      title="Re-download the card database from Scryfall">
+      title="Re-read data/prints_index.json from this site (does not contact Scryfall)">
         ↻ &nbsp;Refresh Database
       </button>
     </div>

@@ -4,7 +4,7 @@ A single-file, browser-based tool for fetching Magic: The Gathering card images 
 
 No installation, no build step, no API key. Open `index.html` and go.
 
-**Version 4.0**
+**Version 4.1**
 
 ---
 
@@ -12,7 +12,7 @@ No installation, no build step, no API key. Open `index.html` and go.
 
 - Paste card names or upload a `.txt` deck list
 - Parses virtually every common deck export format, including main/sideboard sections and quantities
-- Six image resolution options (Small through PNG)
+- Six image resolution options (Small through PNG), using Scryfall's WebP images
 - **Paper Only** — exclude digital-only prints (MTGO, Arena)
 - **First Print** — fetch the oldest printing of each card
 - **Three output modes:**
@@ -23,7 +23,7 @@ No installation, no build step, no API key. Open `index.html` and go.
 - Local card database for instant printing lookups (no per-card API calls)
 - 7-day browser cache of card metadata, with a per-variant breakdown and clear button
 - Cancel a fetch mid-flight without reloading the page
-- Rate-limit-aware fetching with automatic backoff and retry
+- Batched card lookups (75 per request) inside Scryfall's rate limits, with a 30-second pause on a 429
 
 ---
 
@@ -139,16 +139,22 @@ A bare name and a set-qualified name count as different requests, since the app 
 
 Choose the resolution before clicking **Summon Cards**. The selection applies to the whole batch and determines the ZIP file extension.
 
-| Option | Dimensions | Format | Best For |
-|---|---|---|---|
-| Small | 146 × 204 px | JPEG | Thumbnails, quick previews |
-| Normal | 488 × 680 px | JPEG | Standard use, most deck tools |
-| Large | 672 × 936 px | JPEG | High quality printing |
-| PNG | 745 × 1040 px | PNG | Lossless, highest quality (default) |
-| Art Crop | Varies | JPEG | Art only, no card frame |
-| Border Crop | Varies | JPEG | Full card, border removed |
+| Option | Scryfall key | Dimensions | Format | Best For |
+|---|---|---|---|---|
+| Small | `thumb` | 146 × 204 px | WebP | Thumbnails, quick previews |
+| Normal | `grid` | 488 × 680 px | WebP | Standard use, most deck tools |
+| Large | `display` | 672 × 936 px | WebP | High quality printing (default) |
+| PNG | `png` | 744 × 1040 px | PNG | Lossless, highest quality — see below |
+| Art Crop | `art` | 626 × 457 px | WebP | Art only, no card frame |
+| Border Crop | `crop` | 480 × 680 px | WebP | Full card, border removed |
 
-For proxy printing, **PNG** or **Large** are recommended — the PDF places cards at 63 × 88 mm, so lower resolutions will look soft.
+For proxy printing, **Large** or **PNG** are recommended — the PDF places cards at 63 × 88 mm, so lower resolutions will look soft. Large is about 270 DPI at that size.
+
+### Scryfall's WebP migration
+
+On [14 October 2026](https://scryfall.com/blog/new-webp-images-jpeg-deprecations-237) Scryfall started serving WebP versions of every card image, under new keys. **After 1 January 2027** the `small`, `large`, `border_crop` and `art_crop` JPEGs are no longer served, `normal` is renamed to `jpeg`, and PNGs can no longer be hotlinked. Luminary uses the WebP keys throughout, so it is unaffected by the JPEG removal.
+
+PNG is still offered, but once Scryfall refuses it the app switches the rest of the session to **Large** WebP and marks those cards **⚠ WebP, PNG unavailable** in the log, rather than failing them. Saved lists that used the old size names load with their WebP equivalent.
 
 ---
 
@@ -188,21 +194,23 @@ Clicking **Summon Cards** runs up to three phases, tracked by the badges and pro
 2. **Options** — apply Paper Only / First Print (only shown when one is enabled)
 3. **Images** — download the image for each resolved card
 
-Requests run three at a time, spaced ~150 ms apart globally to stay inside [Scryfall's rate limit guidelines](https://scryfall.com/docs/api#rate-limits). A `429` response triggers a `Retry-After`-aware backoff; image CDN failures retry with exponential backoff (500 ms → 1 s → 2 s).
+Requests follow [Scryfall's rate limits](https://scryfall.com/docs/api/rate-limits): `/cards/collection`, `/cards/named` and `/cards/search` are spaced 550 ms apart (the limit is 2 per second), every other API call 110 ms apart (limit 10 per second). A `429` locks a client out for 30 seconds, so one pauses all API requests for that long, with a note in the log, instead of retrying into the lockout. Image downloads come from `cards.scryfall.io`, which has no rate limit; failures there retry with exponential backoff (500 ms → 1 s → 2 s).
 
 ### Cancelling
 
 While a fetch is running, the button becomes **Cancel Summoning**. Clicking it aborts all in-flight and queued requests immediately.
 
-### Search Strategy (3-tier fallback)
+### Search Strategy
 
-For each card, in order:
+Every line that is not already cached goes to `POST /cards/collection`, **75 lines per request** — a 500-card list takes 7 requests. Each line is sent as set + collector number, name + set, or name alone, depending on what it gives. The collection endpoint matches names exactly but ignores case and accents, and accepts a double-faced card's front name on its own.
 
-1. **Exact name** — `GET /cards/named?exact=<name>` (plus `&set=` if a set code was given)
-2. **Fuzzy name** — `GET /cards/named?fuzzy=<name>`, catching typos and alternate spellings
-3. **Name-only fuzzy** — if a set code was given but not found, the set is dropped and the name searched alone. Flagged yellow in the log.
+Lines it cannot resolve fall back to individual lookups, in order:
 
-When both a set code and collector number are supplied (e.g. `M10 93`), the direct endpoint `GET /cards/:code/:number` is used instead and name search is skipped.
+1. **Set + collector number** — `GET /cards/:code/:number`, used only if the card there has the name you asked for
+2. **Name within the set** — `GET /cards/named?exact=<name>&set=<code>`, then `fuzzy`
+3. **Fuzzy name alone** — `GET /cards/named?fuzzy=<name>`, catching typos. If a set or number was given but dropped, the line is flagged yellow.
+
+A set + collector number names a slot, not a card, so it is checked against the name: `Island (UNF) 240` is a Plains. When they disagree the card is found by name and set instead, and the log says **⚠ UNF #240 is Plains, matched by name**.
 
 ### Log Colours
 
@@ -218,8 +226,10 @@ Successful entries may carry suffixes:
 |---|---|
 | `✦ first print` | First Print swapped in an earlier printing |
 | `✦ paper print` | Paper Only swapped in a paper printing |
-| `⚠ alt print used` | The set code you gave was not found, so the card was matched by name alone |
-| `💾` | Served from the local cache instead of the API |
+| `⚠ alt print used` | The set code or collector number you gave was not found, so the card was matched by name |
+| `⚠ M10 #93 is …, matched by name` | That set + number holds a different card, so the card was found by name and set |
+| `⚠ WebP, PNG unavailable` | Scryfall refused the PNG, so the Large WebP was used |
+| `✦ cached` | Served from the local cache instead of the API |
 
 Only `⚠ alt print used` colours the line yellow. A swap caused by an option you switched on is the feature working, so it stays blue.
 
@@ -236,12 +246,13 @@ The default view. Successfully fetched cards appear in a grid; failures appear o
 ### File Naming
 
 ```
-Lightning_Bolt_m10.jpg
-Black_Lotus_lea.png
-Jace_the_Mind_Sculptor_wwk.jpg
+Lightning Bolt_m10_146.webp
+Black Lotus_lea_232.png
+Island_unf_236.webp
+Island_unf_241.webp
 ```
 
-The extension follows the selected resolution (`.png` for PNG, `.jpg` for everything else). The archive is named `scryfall-<resolution>.zip`.
+Names are `<card>_<set>_<collector number>`, so two printings from the same set get separate files. The extension follows the selected resolution (`.png` for PNG, `.webp` for everything else). The same printing listed in both main deck and sideboard is stored once. The archive is named `scryfall-<resolution>.zip`.
 
 ---
 
@@ -280,22 +291,23 @@ The grid is centred on the page, so trimming with a guillotine or corner punch i
 
 ### Preview
 
-A live preview renders every page before you commit. When the job spans multiple pages, use the **‹ ›** arrows to page through them. The summary line above the preview reports the layout, total card count, page count, and spacing.
+A live preview shows each page before you commit, drawn when you turn to it so large jobs stay light on memory. When the job spans multiple pages, use the **‹ ›** arrows to page through them. The summary line above the preview reports the layout, total card count, page count, and spacing.
 
 **Generate PDF** saves `proxy-<size>-<timestamp>.pdf`, with a progress bar during assembly.
 
-PNG cards are re-encoded to high-quality JPEG when building the PDF. At 63 x 88 mm a
-745 x 1040 image is already around 300 DPI, so nothing is downscaled — but PNG is stored
+PNG and WebP cards are re-encoded to high-quality JPEG when building the PDF. At 63 x 88 mm a
+744 x 1040 image is already around 300 DPI, so nothing is downscaled — but PNG is stored
 essentially uncompressed inside a PDF, which made large proxy sets run to hundreds of
 megabytes and risk failing during assembly. The re-encode cuts that by roughly 5-10x with
-no visible difference at print size. Images fetched at the JPEG resolutions are passed
-through untouched rather than re-encoded.
+no visible difference at print size. WebP is re-encoded because JPEG is the image format
+every PDF reader handles natively. Images that are already JPEG are passed through
+untouched rather than re-encoded.
 
 ---
 
 ## Card Database
 
-**Paper Only** and **First Print** need to know every printing of a card. Doing that per-card through the API means one paginated search per card, which triggers rate limiting fast — and Scryfall's `/cards/search` endpoint blocks cross-origin requests from some hosting origins, GitHub Pages included.
+**Paper Only** and **First Print** need to know every printing of a card. Doing that per-card through the API means one paginated search per card, which triggers rate limiting fast: `/cards/search` allows only 2 requests per second. (Its rate-limit responses can arrive without CORS headers, so in the browser this used to look like a CORS block.)
 
 Luminary solves this with a local index.
 
@@ -323,6 +335,8 @@ The **Card Database** section of the info modal (**ⓘ**, top right) shows a sta
 To actually update the data, re-run `update_bulk_data.py` and then hit Refresh. Do this after each new set release, roughly every three months.
 
 On Windows, double-click **`update_bulk_data.bat`** instead of using a terminal. It finds your Python install, runs the script in its own folder, and keeps the window open at the end so you can read the result. It needs Python 3.7+ on the system and tells you where to get it if none is found.
+
+The script identifies itself to Scryfall as `Luminary-BulkUpdater/<version>`. Scryfall refuses scripted downloads that send a generic User-Agent (`Python-urllib`, `curl` and the like), so keep that line if you adapt the script, and bump its version alongside the app's.
 
 ### Why there is no in-browser download
 
@@ -359,9 +373,9 @@ Re-fetching a list you already have moves it to the top rather than adding a dup
 
 ## Metadata Cache
 
-Resolved card data is cached in `localStorage` for **7 days** so repeat fetches skip the API entirely. Cached hits are marked with `💾` in the log.
+Resolved card data is cached in `localStorage` for **7 days** so repeat fetches skip the API entirely. Cached hits are marked with `✦ cached` in the log. Only the fields Luminary reads are kept, about 1.8 KB per entry, so the browser's storage holds a few thousand cards.
 
-Each option combination is cached separately — Standard, Paper Only, First Print, and Paper + First are distinct entries for the same card, so toggling options never returns a stale result.
+Each option combination is cached separately — Standard, Paper Only, First Print, and Paper + First are distinct entries for the same printing, so toggling options never returns a stale result.
 
 Open the info modal to see a live breakdown by variant and a total count. **Clear All Cache** wipes every entry. When storage fills up, the oldest 30% of entries are evicted automatically.
 
@@ -374,7 +388,26 @@ Images are **not** cached; only metadata is.
 - **ⓘ** (top right) opens the info modal: quick instructions, supported formats, changelog, cache and saved lists, and database status. It fades out as you scroll.
 - **Recent Lists** sits above Image Resolution and appears once you have fetched something.
 - The progress area shows a phase label, a per-phase counter, and a scrolling log.
-- There is one undocumented option, unlocked by a keyboard sequence, that swaps cards for their showcase, borderless, Universes Beyond, and Secret Lair printings where available. It relies on Scryfall's `/cards/search` endpoint and so may not work on all hosting origins.
+- There is one undocumented option, unlocked by a keyboard sequence, that swaps cards for their showcase, borderless, Universes Beyond, and Secret Lair printings where available. It relies on Scryfall's `/cards/search` endpoint, one request per card at 2 per second, so it is slow on long lists.
+
+---
+
+## What's New in 4.1
+
+**Changed**
+- Images use Scryfall's WebP versions (`thumb`, `grid`, `display`, `art`, `crop`), ahead of the JPEG retirement on 1 January 2027. **Large** is the new default; PNG falls back to Large when Scryfall stops serving it to the browser
+- Card lookups go through `/cards/collection`, 75 lines per request, and the request pacing follows Scryfall's published per-endpoint limits. The old pacing sent about 6.7 requests per second to endpoints limited to 2
+- A `429` pauses all API requests for Scryfall's 30-second lockout instead of retrying after 2 seconds
+- jsPDF updated from 2.5.1 to 4.2.1, which fixes several published image-parsing vulnerabilities
+- The cache stores about a third as much per card, and old entries are invalidated
+
+**Fixed**
+- Two printings from one set (`Island (UNF) 236` and `241`) overwrote each other in the ZIP, showed as one tile, and with Paper Only or First Print on, shared one cached result
+- A set + collector number pointing at a different card than the one named was used silently; it is now caught and the card found by name
+- A line typed in capitals (`LIGHTNING BOLT`) read its last word as a set code, and a name starting with a number (`1996 World Champion`) lost it as a quantity
+- The proxy preview drew every page up front, which could use over a gigabyte for a large deck, and a settings change mid-draw could mix pages from two layouts
+- A failed PDF build left the Generate button stuck on "Generating…"
+- `update_bulk_data.py` and `update_bulk_data.bat` are back in the repository
 
 ---
 
