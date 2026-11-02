@@ -272,8 +272,10 @@ Renders the whole deck as a single image, in one of two layouts. Either way, car
 
 ### Options
 
+The controls sit in a bar above the preview that stays in view while you scroll: view settings (Layout, Transparent Background) on the left, export settings and the downloads on the right. Each output tab uses the same arrangement. On a phone the export controls move to a bar pinned to the bottom of the screen instead.
+
 - **Layout** — Stacks or Grid
-- **Export Resolution** — Full, Large (75%), or Medium (50%)
+- **Export Size** — 100%, 75% or 50% of the rendered image, with the resulting pixel size shown next to it
 - **Transparent Background** — drops the purple gradient backdrop, giving a PNG with alpha for compositing elsewhere. The grid's headings and counts are light-coloured, so they need a dark background behind them
 
 **Download Image** saves a PNG named `visual-decklist-<timestamp>.png`.
@@ -406,8 +408,15 @@ Images are **not** cached; only metadata is.
 - Visual Decklist **Grid** layout: one card per printing, quantity underneath, with Main deck and Sideboard headings and counts
 - Visual decklists download as **PDF** too, one page with cards at true size
 
+**Changed**
+- All three output tabs share one layout: a bar with a summary and the main action at the top, kept in view while scrolling, then settings, then the preview. Download ZIP, Download Image/PDF and Generate PDF no longer sit below long previews or card grids. On phones the actions move to a bar pinned to the bottom of the screen
+- Individual Cards opens with a summary, for example "9 images · Large WebP", plus a failure count when a card was not found
+- Visual Decklist export sizes read 100% / 75% / 50% with the exact pixel size, instead of Full / Large / Medium, which clashed with the Large image size
+- Generate PDF uses the same button style as the other downloads instead of copying Summon Cards
+
 **Fixed**
 - Opening or closing the info panel shifted the whole page sideways by the scrollbar's width; so did a short page first becoming scrollable
+- The stacked decklist image reserved a full four-card row and a fifteen-card sideboard stack whatever the deck held, leaving a third or more of the image empty. The rotated SIDEBOARD label is now centred on the sideboard column
 
 ---
 
