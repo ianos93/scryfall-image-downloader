@@ -808,20 +808,19 @@
     border-radius: var(--radius-control);
     background: rgba(72,31,111,0.2);
     border: 1px solid rgba(156,140,185,0.2);
-    color: rgba(198,182,221,0.5);
-    font-size: 14px;
-    font-family: serif;
-    font-weight: bold;
+    color: rgba(198,182,221,0.8);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 100;
-    opacity: 0.6;
-    line-height: 1;
+    opacity: 0.75;
     padding: 0;
   }
+  /* Drawn rather than the ⓘ character, which every platform's fonts render at a
+     different weight and baseline. Stroke weight matches Jost's light text. */
+  .info-btn svg { width: 18px; height: 18px; display: block; }
   .info-btn.hidden {
     opacity: 0;
     pointer-events: none;
@@ -3862,7 +3861,13 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
 <!-- Progress and results for screen readers; the visible log is too chatty to be live. -->
 <div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
 
-<button class="info-btn" id="info-btn">ⓘ</button>
+<button class="info-btn" id="info-btn" aria-label="About Luminary, cache and card database" title="About Luminary">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9.25"/>
+    <path d="M12 11v5.5"/>
+    <circle cx="12" cy="7.75" r="0.9" fill="currentColor" stroke="none"/>
+  </svg>
+</button>
 
 <div class="modal" id="info-modal">
   <div class="modal-content">
