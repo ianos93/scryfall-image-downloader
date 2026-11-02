@@ -531,6 +531,16 @@
     width: fit-content;
   }
 
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .panel-error {
+    flex-basis: 100%; text-align: right;
+    font-size: 13px; font-weight: 400; line-height: 1.5; color: rgba(255,170,180,0.95);
+  }
+  @media (max-width: 640px) { .panel-error { text-align: left; } }
+
   .input-hint {
     margin-top: 10px; font-size: 13px; font-weight: 400; letter-spacing: 0.02em;
     color: rgba(255,170,180,0.95);
@@ -961,7 +971,7 @@
     <div class="float-card">
       <div class="card-label">Card Names</div>
       <textarea id="card-input" placeholder="Lightning Bolt&#10;Black Lotus&#10;Jace, the Mind Sculptor&#10;&#10;One per line…"></textarea>
-      <p class="input-hint" id="input-hint" hidden>Add at least one card name, one per line.</p>
+      <p class="input-hint" id="input-hint" role="alert" hidden>Add at least one card name, one per line.</p>
     </div>
     <div class="float-card">
       <div class="card-label">Import Decklist</div>
@@ -1032,7 +1042,7 @@
   </div>
 
   <div class="results-actions" id="results-actions" style="display:none;">
-    <div class="run-issues" id="run-issues" hidden></div>
+    <div class="run-issues" id="run-issues" role="region" aria-label="Cards that need a second look" hidden></div>
     <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 28px;">
       <button class="btn-action active" id="btn-individual">⊞ &nbsp; Individual Cards</button>
       <button class="btn-action" id="btn-visual">⬚ &nbsp; Visual Decklist</button>
@@ -1070,6 +1080,7 @@
           </div>
           <button class="btn-zip" id="download-visual-btn" disabled>&#8595; Download Image</button>
           <button class="btn-zip secondary" id="download-visual-pdf-btn" disabled title="One page at true card size (63 × 88 mm per card)">&#8595; Download PDF</button>
+          <p class="panel-error" id="visual-error" role="alert" hidden></p>
         </div>
       </div>
       <div id="visual-preview-canvas-container" style="background: rgba(20,8,35,0.5); border-radius: var(--radius-surface); padding: 16px; display: flex; justify-content: center;">
@@ -1093,6 +1104,7 @@
             </div>
             <div class="prog-track" style="margin-bottom:0;"><div class="prog-fill" id="proxy-progress-bar"></div></div>
           </div>
+          <p class="panel-error" id="proxy-error" role="alert" hidden></p>
         </div>
       </div>
 
@@ -1156,6 +1168,7 @@
         </div>
         <div class="bar-group bar-export">
           <button class="btn-zip" id="dl-btn" disabled>↓ Download ZIP</button>
+          <p class="panel-error" id="zip-error" role="alert" hidden></p>
         </div>
       </div>
       <div class="phase-summary" id="phase-summary" style="display:none;">
@@ -1632,12 +1645,7 @@ function downloadHistoryEntry(id) {
   if (!e) return;
   const stamp = new Date(e.savedAt).toISOString().slice(0, 10);
   const name = `${sanitize(e.name || e.label || 'card-list').replace(/\s+/g, '_')}_${stamp}.txt`;
-  const blob = new Blob([e.text], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  saveBlob(new Blob([e.text], { type: 'text/plain;charset=utf-8' }), name);
 }
 
 function deleteHistoryEntry(id) {
@@ -1748,6 +1756,7 @@ function pauseApi(ms, reason) {
   if (until <= apiPausedUntil) return;
   apiPausedUntil = until;
   log(`⚠︎  ${reason} — pausing Scryfall requests for ${Math.round(ms / 1000)}s.`, 'warn');
+  announce(`${reason}. Waiting ${Math.round(ms / 1000)} seconds before continuing.`);
 }
 
 async function rateLimitedFetch(url, options = {}, retries = 2) {
@@ -2213,6 +2222,35 @@ function cardMatchesName(card, name) {
 }
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+// Speaks a status change to screen readers through the hidden live region. Clearing
+// it first, then writing a frame later, makes a repeated message read out again.
+function announce(message) {
+  const el = document.getElementById('sr-status');
+  if (!el) return;
+  el.textContent = '';
+  requestAnimationFrame(() => { el.textContent = message; });
+}
+
+// Inline error next to the action that failed, in place of an alert() that blocked
+// the page and vanished once dismissed. role="alert" on the element announces it.
+function showPanelError(id, message) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = message || '';
+  el.hidden = !message;
+}
+
+// Saves a generated file. The object URL is released after a delay: revoking it in
+// the same tick as the click can cancel the download in Firefox and Safari.
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
 // What went wrong, rewritten as what the person can do about it. Scryfall's own
 // wording is kept only where it already says that.
 function explainFailure(stage, message) {
@@ -2689,13 +2727,17 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if(allEntries.length === 0){
     ta.classList.add('input-error'); ta.focus();
     setTimeout(()=>ta.classList.remove('input-error'),1000);
-    document.getElementById('input-hint').hidden = false;
+    const emptyHint = document.getElementById('input-hint');
+    emptyHint.textContent = 'Add at least one card name, one per line.';
+    emptyHint.hidden = false;
     return;
   }
-  document.getElementById('input-hint').hidden = true;   // a file or saved list may have filled it
-
+  const hint = document.getElementById('input-hint');
+  hint.hidden = true;   // a file or saved list may have filled the box since it showed
   if(allEntries.length > 500) {
-    alert(`Luminary summons up to 500 cards at a time, and this list has ${allEntries.length}. Split it and summon each part.`);
+    hint.textContent = `Luminary summons up to 500 cards at a time, and this list has ${allEntries.length}. Split it and summon each part.`;
+    hint.hidden = false;
+    ta.focus();
     return;
   }
   if(allEntries.length > 100) {
@@ -2713,6 +2755,8 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   cachedVisualCanvas = null;
   
   fb.innerHTML='✦ &nbsp; Cancel Summoning';
+  announce(`Summoning ${allEntries.length} card${allEntries.length === 1 ? '' : 's'}.`);
+  ['zip-error', 'visual-error', 'proxy-error'].forEach(id => showPanelError(id, ''));
   document.getElementById('results-actions').style.display='block';
   document.getElementById('tab-individual').style.display='block';
   document.getElementById('tab-visual').style.display='none';
@@ -2937,6 +2981,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     const cards = ok === total ? `${total} card${total === 1 ? '' : 's'}` : `${ok} of ${total} cards`;
     document.getElementById('individual-summary').textContent =
       `${cards} · ${sizeName} ${format}` + (failures.length ? ` · ${failures.length} not summoned` : '');
+    announce(`Summoned ${ok} of ${total} cards.`
+      + (failures.length ? ` ${failures.length} not summoned.` : '')
+      + (corrections.length ? ` ${corrections.length} matched to the closest card.` : '')
+      + (failures.length || corrections.length ? ' Details are above the output tabs.' : ''));
     document.getElementById('stats-bar').hidden=false;
     document.getElementById('dl-btn').disabled=ok===0;
     document.getElementById('proxy-generate-btn').disabled=ok===0;
@@ -3019,9 +3067,12 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     if(err.name === 'AbortError' || err.message === 'Aborted') {
       log('⚠︎ Summoning cancelled. Nothing was downloaded; summon again to start over.', 'warn');
       setProgressPhase('Cancelled');
+      announce('Summoning cancelled.');
     } else {
-      log(`✕ Summoning stopped: ${explainFailure('run', err.message)}`, 'e');
+      const reason = explainFailure('run', err.message);
+      log(`✕ Summoning stopped: ${reason}`, 'e');
       setProgressPhase('Stopped');
+      announce(`Summoning stopped. ${reason}`);
     }
   } finally {
     isFetching=false; 
@@ -3032,11 +3083,19 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
 document.getElementById('dl-btn').addEventListener('click',async()=>{
   if(!fetchedImages.length)return;
   const b=document.getElementById('dl-btn');b.disabled=true;b.textContent='Packing…';
-  const zip=new JSZip();fetchedImages.forEach(({filename,blob})=>zip.file(filename,blob));
-  const content=await zip.generateAsync({type:'blob'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(content);
-  a.download=`scryfall-${selectedSize}.zip`;a.click();URL.revokeObjectURL(a.href);
-  b.disabled=false;b.textContent='↓ Download ZIP';
+  showPanelError('zip-error', '');
+  try {
+    const zip=new JSZip();fetchedImages.forEach(({filename,blob})=>zip.file(filename,blob));
+    const content=await zip.generateAsync({type:'blob'});
+    const name=`scryfall-${selectedSize}.zip`;
+    saveBlob(content, name);
+    announce(`Saved ${name}, ${fetchedImages.length} images.`);
+  } catch (e) {
+    console.error('[ZIP] Packing failed:', e);
+    showPanelError('zip-error', 'The ZIP could not be built, usually because the browser ran out of memory. Try a smaller image resolution.');
+  } finally {
+    b.disabled=false;b.textContent='↓ Download ZIP';
+  }
 });
 
 async function generateVisualPreview() {
@@ -3384,13 +3443,17 @@ async function buildVisualExport(btn) {
 }
 
 document.getElementById('download-visual-btn').addEventListener('click', async (e) => {
+  showPanelError('visual-error', '');
   const { exportCanvas } = await buildVisualExport(e.currentTarget);
+  // toBlob hands back null, rather than throwing, when the image is too big to encode.
   exportCanvas.toBlob((blob) => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `visual-decklist-${Date.now()}.png`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    if (!blob) {
+      showPanelError('visual-error', 'The image could not be saved. Try a smaller Export Size.');
+      return;
+    }
+    const name = `visual-decklist-${Date.now()}.png`;
+    saveBlob(blob, name);
+    announce(`Saved ${name}.`);
   }, 'image/png');
 });
 
@@ -3408,16 +3471,19 @@ document.getElementById('download-visual-pdf-btn').addEventListener('click', asy
   const transparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
 
   btn.disabled = true;
+  showPanelError('visual-error', '');
   try {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: wMm > hMm ? 'landscape' : 'portrait', unit: 'mm', format: [wMm, hMm] });
     // JPEG keeps the file small; PNG only when the background must stay transparent.
     if (transparent) doc.addImage(exportCanvas, 'PNG', 0, 0, wMm, hMm);
     else doc.addImage(exportCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, wMm, hMm);
-    doc.save(`visual-decklist-${Date.now()}.pdf`);
+    const name = `visual-decklist-${Date.now()}.pdf`;
+    doc.save(name);
+    announce(`Saved ${name}.`);
   } catch (err) {
     console.error('[Visual] PDF export failed:', err);
-    alert(`The PDF could not be built: ${err.message || err}. Try a smaller Export Resolution.`);
+    showPanelError('visual-error', 'The PDF could not be built, usually because the browser ran out of memory. Try a smaller Export Size, or turn off Transparent Background.');
   } finally {
     btn.disabled = false;
   }
@@ -3696,6 +3762,8 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   progSection.style.display = 'block';
   progBar.style.width = '0%';
   progPhase.textContent = 'Building PDF';
+  showPanelError('proxy-error', '');
+  announce(`Building a ${cardList.length}-card proxy PDF.`);
 
   // finally, so a failure (most often running out of memory on a very large set)
   // cannot leave the button disabled on "Generating…" for the rest of the session.
@@ -3746,10 +3814,12 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     }
 
     progPhase.textContent = 'Saving…';
-    doc.save(`proxy-${proxySize}-${Date.now()}.pdf`);
+    const name = `proxy-${proxySize}-${Date.now()}.pdf`;
+    doc.save(name);
+    announce(`Saved ${name}, ${doc.getNumberOfPages()} pages.`);
   } catch (e) {
     console.error('[Proxy] PDF generation failed:', e);
-    alert(`The PDF could not be built: ${e.message || e}. Try fewer cards, or a smaller image resolution.`);
+    showPanelError('proxy-error', 'The PDF could not be built, usually because the browser ran out of memory. Turn off Repeat by Quantity, or summon again at a smaller image resolution.');
   } finally {
     progSection.style.display = 'none';
     progBar.style.width = '0%';
@@ -3778,6 +3848,9 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     <div style="font-family:'Jost',sans-serif; font-size:11px; letter-spacing:0.1em; color:rgba(255,200,140,0.7);">Premium Prints unlocked. Showcase, Borderless, UB &amp; Secret Lair await.</div>
   </div>
 </div>
+
+<!-- Progress and results for screen readers; the visible log is too chatty to be live. -->
+<div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
 
 <button class="info-btn" id="info-btn">ⓘ</button>
 
@@ -3821,6 +3894,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         <li>Every output tab now opens with its controls and download button at the top, kept in view as you scroll; on phones the download sits at the bottom of the screen</li>
         <li>Visual Decklist export sizes are shown as 100% / 75% / 50% with the exact pixel size</li>
         <li>A finished run says how many cards were summoned, lists any that failed or were corrected, and takes you to their line in Card Names</li>
+        <li>Errors appear next to the button that failed instead of in pop-ups, and screen readers hear progress and results</li>
         <li>The stacked decklist image no longer reserves empty space for stacks it does not have</li>
         <li>Opening and closing this panel no longer shifts the page sideways</li>
       </ul>

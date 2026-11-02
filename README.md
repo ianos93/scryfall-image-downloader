@@ -427,11 +427,15 @@ Images are **not** cached; only metadata is.
 - Cards that were not summoned, and names that were corrected, are listed above the output tabs; selecting one selects its line in Card Names
 - Typo corrections are shown in the log (`· from “Lightnig Bolt”`) instead of passing silently
 - Failure messages say what to do ("No card by that name. Check the spelling.") instead of passing on Scryfall's error text, and an empty list explains what to add
+- Screen readers hear when summoning starts and finishes (with how many cards failed), rate-limit pauses, and each saved file
+- Pop-up alerts are gone: a failed ZIP, image or PDF shows its message next to the button that failed, and a list over 500 cards is explained under Card Names
 - Visual Decklist export sizes read 100% / 75% / 50% with the exact pixel size, instead of Full / Large / Medium, which clashed with the Large image size
 - Generate PDF uses the same button style as the other downloads instead of copying Summon Cards
 
 **Fixed**
 - Opening or closing the info panel shifted the whole page sideways by the scrollbar's width; so did a short page first becoming scrollable
+- A failed ZIP build left the button stuck on "Packing…", and a visual decklist too large to encode failed silently
+- Downloads released their file link in the same moment they started, which can cancel the download in Firefox and Safari
 - The stacked decklist image reserved a full four-card row and a fifteen-card sideboard stack whatever the deck held, leaving a third or more of the image empty. The rotated SIDEBOARD label is now centred on the sideboard column
 
 ---
