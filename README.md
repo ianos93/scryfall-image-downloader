@@ -164,7 +164,7 @@ PNG is still offered, but once Scryfall refuses it the app switches the rest of 
 
 Checks the `games` field on every fetched card. If a card exists only digitally (MTGO, Arena), the closest paper printing is substituted.
 
-- If a paper printing is found it is used instead and flagged **⚠ alt print used** in the log
+- If a paper printing is found it is used instead and marked **✦ paper print** in the log
 - If no paper printing exists at all, the card is reported as an error
 
 ### First Print
@@ -172,7 +172,7 @@ Checks the `games` field on every fetched card. If a card exists only digitally 
 Resolves each card to its oldest non-promo, non-digital printing — useful for original artwork and early set symbols.
 
 - If the card is already the oldest printing it is kept as-is, with no warning
-- If an older printing is found it is swapped in and flagged **⚠ alt print used**
+- If an older printing is found it is swapped in and marked **✦ first print**
 - If the lookup fails, the originally fetched card is kept as a silent fallback
 - The search is **skipped** when you explicitly specified a set code for that card, so you can always pin an exact printing
 
@@ -226,12 +226,24 @@ Successful entries may carry suffixes:
 |---|---|
 | `✦ first print` | First Print swapped in an earlier printing |
 | `✦ paper print` | Paper Only swapped in a paper printing |
-| `⚠ alt print used` | The set code or collector number you gave was not found, so the card was matched by name |
+| `· from “Lightnig Bolt”` | The name had a typo, and the closest matching card was used |
+| `⚠ M10 #93 not found, used the closest printing` | The set code or collector number you gave does not exist, so the card was matched by name |
 | `⚠ M10 #93 is …, matched by name` | That set + number holds a different card, so the card was found by name and set |
 | `⚠ WebP, PNG unavailable` | Scryfall refused the PNG, so the Large WebP was used |
 | `✦ cached` | Served from the local cache instead of the API |
 
-Only `⚠ alt print used` colours the line yellow. A swap caused by an option you switched on is the feature working, so it stays blue.
+Only the `⚠` notes colour the line yellow. A swap caused by an option you switched on is the feature working, so it stays blue.
+
+Failed lines say what to do about them, for example **No card by that name. Check the spelling.**
+
+### When a Run Finishes
+
+The progress line ends on **Summoned 8 of 9**, and Individual Cards opens with the same count, for example **8 of 9 cards · Large WebP · 1 not summoned**.
+
+When something needs a second look, a box appears above the output tabs, whichever tab is open:
+
+- **Not summoned:** each card that failed, with the reason. Select one to jump to its line in Card Names, fix it, then summon again.
+- **Matched to the closest card:** names fixed by fuzzy matching (`Lightnig Bolt` became `Lightning Bolt`), and set + number lines that pointed at a different card. Select one to check its line.
 
 ---
 
@@ -410,7 +422,11 @@ Images are **not** cached; only metadata is.
 
 **Changed**
 - All three output tabs share one layout: a bar with a summary and the main action at the top, kept in view while scrolling, then settings, then the preview. Download ZIP, Download Image/PDF and Generate PDF no longer sit below long previews or card grids. On phones the actions move to a bar pinned to the bottom of the screen
-- Individual Cards opens with a summary, for example "9 images · Large WebP", plus a failure count when a card was not found
+- Individual Cards opens with a summary, for example "8 of 9 cards · Large WebP · 1 not summoned"
+- A run ends on "Summoned 8 of 9" instead of staying on "Retrieving Card Images 9 / 9", even when a card had failed
+- Cards that were not summoned, and names that were corrected, are listed above the output tabs; selecting one selects its line in Card Names
+- Typo corrections are shown in the log (`· from “Lightnig Bolt”`) instead of passing silently
+- Failure messages say what to do ("No card by that name. Check the spelling.") instead of passing on Scryfall's error text, and an empty list explains what to add
 - Visual Decklist export sizes read 100% / 75% / 50% with the exact pixel size, instead of Full / Large / Medium, which clashed with the Large image size
 - Generate PDF uses the same button style as the other downloads instead of copying Summon Cards
 

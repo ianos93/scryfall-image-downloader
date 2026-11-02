@@ -531,6 +531,25 @@
     width: fit-content;
   }
 
+  .input-hint {
+    margin-top: 10px; font-size: 13px; font-weight: 400; letter-spacing: 0.02em;
+    color: rgba(255,170,180,0.95);
+  }
+
+  /* Run outcome that needs attention: not-summoned cards and corrected names. */
+  .run-issues {
+    margin-top: 20px; padding: 16px 20px;
+    background: rgba(20,8,35,0.55);
+    border: 1px solid rgba(255,200,90,0.28);
+    border-radius: var(--radius-surface);
+  }
+  .run-issues-head { font-size: 13px; font-weight: 400; line-height: 1.5; color: rgba(255,214,140,0.95); margin-bottom: 10px; }
+  .run-issues ul + .run-issues-head { margin-top: 16px; }
+  .run-issues ul { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .run-issues li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .run-issues li .history-btn { text-transform: none; letter-spacing: 0.04em; font-size: 12px; }
+  .run-issues li span { font-size: 13px; font-weight: 300; color: rgba(241,237,247,0.8); }
+
   /* ── Output panels ──
      All three output tabs read in the same order: a bar saying what you are looking
      at and what you can do with it, then any settings, then the preview. The bar
@@ -942,6 +961,7 @@
     <div class="float-card">
       <div class="card-label">Card Names</div>
       <textarea id="card-input" placeholder="Lightning Bolt&#10;Black Lotus&#10;Jace, the Mind Sculptor&#10;&#10;One per line…"></textarea>
+      <p class="input-hint" id="input-hint" hidden>Add at least one card name, one per line.</p>
     </div>
     <div class="float-card">
       <div class="card-label">Import Decklist</div>
@@ -1012,6 +1032,7 @@
   </div>
 
   <div class="results-actions" id="results-actions" style="display:none;">
+    <div class="run-issues" id="run-issues" hidden></div>
     <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 28px;">
       <button class="btn-action active" id="btn-individual">⊞ &nbsp; Individual Cards</button>
       <button class="btn-action" id="btn-visual">⬚ &nbsp; Visual Decklist</button>
@@ -1691,6 +1712,9 @@ ua.addEventListener('dragover',e=>{e.preventDefault();ua.classList.add('drag-ove
 ua.addEventListener('dragleave',()=>ua.classList.remove('drag-over'));
 ua.addEventListener('drop',e=>{e.preventDefault();ua.classList.remove('drag-over');if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0]);});
 fi.addEventListener('change',()=>{if(fi.files[0])loadFile(fi.files[0]);});
+document.getElementById('card-input').addEventListener('input', () => {
+  document.getElementById('input-hint').hidden = true;
+});
 function loadFile(f){const r=new FileReader();r.onload=e=>{document.getElementById('card-input').value=e.target.result;const fn=document.getElementById('file-name');fn.textContent=f.name;fn.style.display='block';};r.readAsText(f);}
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
@@ -2120,7 +2144,7 @@ function parseNamesWithSections(raw){
 
   for (const line of lines) { if (isBracketHeader(line)) { hasBracketHeaders = true; break; } }
 
-  lines.forEach((line) => {
+  lines.forEach((line, lineIndex) => {
       if (line === '' || line.startsWith('#')) {
         if (line === '' && mainHasCards && currentSection === 'main' && !blankSeen && !hasBracketHeaders) {
           blankSeen = true; currentSection = 'sideboard';
@@ -2137,6 +2161,7 @@ function parseNamesWithSections(raw){
       if (DECK_HEADERS.test(cleanLine)) { return; }
 
       const entry = parseLine(line);
+      entry.line = lineIndex;   // so a failed card can be found again in the list
       if (entry.name && (isSideboardHeader(entry.name) || isMainHeader(entry.name) || DECK_HEADERS.test(entry.name))) { return; }
 
       const key=(entry.name||'')+':'+(entry.set||'')+':'+(entry.number||'');
@@ -2188,6 +2213,90 @@ function cardMatchesName(card, name) {
 }
 function sanitize(n){return n.replace(/[^a-z0-9 \-_]/gi,'_').trim();}
 function log(msg,t){const el=document.getElementById('log');el.style.display='block';const d=document.createElement('div');d.className=t==='ok'?'lok':t==='e'?'lerr':t==='warn'?'lwarn':'';d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+// What went wrong, rewritten as what the person can do about it. Scryfall's own
+// wording is kept only where it already says that.
+function explainFailure(stage, message) {
+  const m = String(message || '');
+  if (/^(No cards found|Not found$)/i.test(m)) return 'No card by that name. Check the spelling.';
+  if (/Too many cards match/i.test(m))         return 'More than one card matches. Use the full name.';
+  if (/No paper printing/i.test(m))            return 'Only printed digitally, so Paper Only left it out.';
+  if (stage === 'image') {
+    return /No image for this size|: 404/.test(m)
+      ? 'Scryfall has no image of this card at this size. Try another resolution.'
+      : 'The image did not download. Summon again in a minute.';
+  }
+  if (/HTTP (429|5\d\d)|Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Scryfall did not respond. Summon again in a minute.';
+  return m;
+}
+
+// Selects a line of the card list, so a failed card can be fixed where it was typed.
+// Falls back to searching by name when the list was edited after the run.
+function selectInputLine(lineIndex, name) {
+  const ta = document.getElementById('card-input');
+  const lines = ta.value.split('\n');
+  const wanted = (name || '').toLowerCase();
+  if (wanted && !(lines[lineIndex] || '').toLowerCase().includes(wanted)) {
+    lineIndex = lines.findIndex(l => l.toLowerCase().includes(wanted));
+  }
+  if (lineIndex < 0 || lineIndex >= lines.length) return;
+  const start = lines.slice(0, lineIndex).reduce((n, l) => n + l.length + 1, 0);
+  ta.focus({ preventScroll: true });
+  ta.setSelectionRange(start, start + lines[lineIndex].length);
+  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 24;
+  ta.scrollTop = Math.max(0, lineIndex * lineHeight - ta.clientHeight / 3);
+  ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// The outcome of a run that needs a decision: cards that were not summoned, which
+// the person has to fix, and names that were corrected, which they should check.
+// Sits above the output tabs so it is seen whichever tab is open.
+function renderRunIssues(failures, corrections) {
+  const box = document.getElementById('run-issues');
+  box.textContent = '';
+  box.hidden = !failures.length && !corrections.length;
+  if (box.hidden) return;
+
+  const section = (heading, items, renderItem) => {
+    const h = document.createElement('p');
+    h.className = 'run-issues-head';
+    h.textContent = heading;
+    const ul = document.createElement('ul');
+    for (const item of items) ul.appendChild(renderItem(item));
+    box.append(h, ul);
+  };
+
+  if (failures.length) {
+    const n = failures.length;
+    section(`${n} card${n === 1 ? ' was' : 's were'} not summoned. Select one to find its line, fix it, then summon again.`,
+      failures, f => {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.className = 'history-btn';
+        btn.textContent = f.label;
+        btn.addEventListener('click', () => selectInputLine(f.line, f.name));
+        const why = document.createElement('span');
+        why.textContent = f.reason;
+        li.append(btn, why);
+        return li;
+      });
+  }
+  if (corrections.length) {
+    const n = corrections.length;
+    section(`${n} name${n === 1 ? ' was' : 's were'} matched to the closest card. Check ${n === 1 ? 'it is' : 'they are'} the one you meant.`,
+      corrections, c => {
+        const li = document.createElement('li');
+        const btn = document.createElement('button');
+        btn.className = 'history-btn';
+        btn.textContent = c.from;
+        btn.addEventListener('click', () => selectInputLine(c.line, c.name || c.from));
+        const to = document.createElement('span');
+        to.textContent = `became ${c.to}`;
+        li.append(btn, to);
+        return li;
+      });
+  }
+}
+
 function setProgress(d,t){const p=t?(d/t)*100:0;document.getElementById('progress-bar').style.width=p+'%';document.getElementById('progress-count').textContent=`${d} / ${t}`;}
 function setProgressPhase(phase){
   const el=document.getElementById('progress-phase');
@@ -2580,14 +2689,18 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   if(allEntries.length === 0){
     ta.classList.add('input-error'); ta.focus();
     setTimeout(()=>ta.classList.remove('input-error'),1000);
+    document.getElementById('input-hint').hidden = false;
     return;
   }
-  
-  if(allEntries.length > 100) {
-    if(!confirm(`You're about to fetch ${allEntries.length} cards. This may take several minutes and could trigger rate limiting. Continue?`)) return;
+  document.getElementById('input-hint').hidden = true;   // a file or saved list may have filled it
+
+  if(allEntries.length > 500) {
+    alert(`Luminary summons up to 500 cards at a time, and this list has ${allEntries.length}. Split it and summon each part.`);
+    return;
   }
-  
-  if(allEntries.length > 500) { alert('Maximum 500 cards allowed. Please reduce your list size.'); return; }
+  if(allEntries.length > 100) {
+    if(!confirm(`Summon all ${allEntries.length} cards? A list this long takes a minute or two to download.`)) return;
+  }
   
   isFetching=true;
   currentAbortController = new AbortController();
@@ -2623,7 +2736,16 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
   setProgress(0,allEntries.length);
   
   let ok=0,err=0;
-  
+  const failures = [], corrections = [];
+  renderRunIssues(failures, corrections);   // clears the previous run's notes
+  const fail = (entry, stage, message) => {
+    const label = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown line');
+    const reason = explainFailure(stage, message);
+    log(`✕  ${label}: ${reason}`, 'e');
+    failures.push({ label, reason, line: entry.line, name: entry.name });
+    err++;
+  };
+
   try {
     setProgressPhase('Retrieving Card Data');
     updatePhaseBadge('metadata', 'active', 0);
@@ -2659,10 +2781,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
       
       if (result.error) {
-        const entry = allEntries[result.index];
-        const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-        log(`✕  ${displayName}: ${result.error}`, 'e');
-        err++;
+        fail(allEntries[result.index], 'card', result.error);
       } else { cardMetadataMap.set(result.index, result.card); }
       
       completedMetadata++;
@@ -2711,10 +2830,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
         
         if (result.error) {
-          const entry = allEntries[result.index];
-          const displayName = entry.name || (entry.set && entry.number ? `${entry.set.toUpperCase()} #${entry.number}` : 'Unknown');
-          log(`✕  ${displayName}: ${result.error}`, 'e');
-          err++;
+          fail(allEntries[result.index], 'options', result.error);
         } else { transformedCards.set(result.index, result.card); }
         
         completedOptions++;
@@ -2760,8 +2876,7 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       if (result.error && (result.error === 'Aborted' || result.error.includes('abort') || signal.aborted)) throw new DOMException('Aborted', 'AbortError');
       
       if (result.error) {
-        log(`✕  ${result.card.name}: ${result.error}`, 'e');
-        err++;
+        fail(result.card._originalEntry || { name: result.card.name }, 'image', result.error);
       } else {
         const { imageData, section, card } = result;
         // The same printing in main and sideboard is one file, not two with one name.
@@ -2776,14 +2891,30 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
         if (card._usedFirstPrint) notes.push(' ✦ first print');
         if (card._usedPaperOnly)  notes.push(' ✦ paper print');
         const requested = card._originalEntry || {};
+        const asked = [requested.set?.toUpperCase(), requested.number && `#${requested.number}`].filter(Boolean).join(' ');
         const fallbackNote = card._nameMismatch
-          ? ` ⚠︎ ${requested.set?.toUpperCase()} #${requested.number} is ${card._nameMismatch}, matched by name`
-          : card._usedFallback ? ` ⚠︎ alt print used` : notes.join('');
+          ? ` ⚠︎ ${asked} is ${card._nameMismatch}, matched by name`
+          : card._usedFallback ? ` ⚠︎ ${asked} not found, used the closest printing` : notes.join('');
+        // A typo the fuzzy search fixed is worth a second look, so it is reported
+        // in the log and in the summary above the tabs rather than passed silently.
+        const corrected = requested.name && !card._nameMismatch && !cardMatchesName(card, requested.name);
+        if (corrected && !corrections.some(c => c.line === requested.line)) {
+          corrections.push({ from: requested.name, to: card.name, line: requested.line });
+        }
+        if (card._nameMismatch && !corrections.some(c => c.line === requested.line)) {
+          corrections.push({
+            from: `${requested.name} ${asked}`,
+            to: `${card.name} ${card.set.toUpperCase()}${card.collector_number ? ` #${card.collector_number}` : ''}, since ${asked} is ${card._nameMismatch}`,
+            line: requested.line,
+            name: requested.name
+          });
+        }
+        const correctedNote = corrected ? ` · from “${requested.name}”` : '';
         const cacheNote = card._fromCache ? ' ✦ cached' : '';
         const premiumNote = card._usedPremium ? ' ✦ premium' : '';
         const pngNote = imageData.pngFallback ? ' ⚠︎ WebP, PNG unavailable' : '';
         const warn = card._usedFallback || imageData.pngFallback;
-        log(`✓  ${card.name} (${card.set.toUpperCase()})${fallbackNote}${premiumNote}${pngNote}${cacheNote}`, warn ? 'warn' : 'ok');
+        log(`✓  ${card.name} (${card.set.toUpperCase()})${correctedNote}${fallbackNote}${premiumNote}${pngNote}${cacheNote}`, warn ? 'warn' : 'ok');
         ok++;
       }
       
@@ -2793,11 +2924,19 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     }
     updatePhaseBadge('images', 'complete', ok);
     
-    setProgress(allEntries.length,allEntries.length);
+    // End on what happened rather than on the last phase's counter, which read
+    // "Retrieving Card Images 9 / 9" even when a card had failed.
+    const total = allEntries.length;
+    setProgress(total, total);
+    setProgressPhase(ok ? 'Summoned' : 'Nothing summoned');
+    document.getElementById('progress-count').textContent = `${ok} of ${total}`;
+    renderRunIssues(failures, corrections);
+
     const sizeName = document.querySelector(`#size-options [data-size="${selectedSize}"]`)?.textContent.trim() || selectedSize;
+    const format = { png: 'PNG', webp: 'WebP', jpg: 'JPEG' }[imageExt(selectedSize)];
+    const cards = ok === total ? `${total} card${total === 1 ? '' : 's'}` : `${ok} of ${total} cards`;
     document.getElementById('individual-summary').textContent =
-      `${fetchedImages.length} image${fetchedImages.length === 1 ? '' : 's'} · ${sizeName} ${{ png: 'PNG', webp: 'WebP', jpg: 'JPEG' }[imageExt(selectedSize)]}`
-      + (err ? ` · ${err} failed, see the log below` : '');
+      `${cards} · ${sizeName} ${format}` + (failures.length ? ` · ${failures.length} not summoned` : '');
     document.getElementById('stats-bar').hidden=false;
     document.getElementById('dl-btn').disabled=ok===0;
     document.getElementById('proxy-generate-btn').disabled=ok===0;
@@ -2878,10 +3017,11 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
     }
   } catch(err) {
     if(err.name === 'AbortError' || err.message === 'Aborted') {
-      log('⚠︎ Summoning cancelled by user.', 'warn');
+      log('⚠︎ Summoning cancelled. Nothing was downloaded; summon again to start over.', 'warn');
       setProgressPhase('Cancelled');
     } else {
-      log(`✕ Error: ${err.message}`, 'e');
+      log(`✕ Summoning stopped: ${explainFailure('run', err.message)}`, 'e');
+      setProgressPhase('Stopped');
     }
   } finally {
     isFetching=false; 
@@ -3680,6 +3820,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         <li>Visual decklists can be downloaded as a PDF, with cards at true size, as well as a PNG image</li>
         <li>Every output tab now opens with its controls and download button at the top, kept in view as you scroll; on phones the download sits at the bottom of the screen</li>
         <li>Visual Decklist export sizes are shown as 100% / 75% / 50% with the exact pixel size</li>
+        <li>A finished run says how many cards were summoned, lists any that failed or were corrected, and takes you to their line in Card Names</li>
         <li>The stacked decklist image no longer reserves empty space for stacks it does not have</li>
         <li>Opening and closing this panel no longer shifts the page sideways</li>
       </ul>
