@@ -37,6 +37,12 @@
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* Reserve the scrollbar's space permanently. Opening the info modal locks page
+     scroll with overflow:hidden, which removed the scrollbar and widened the layout,
+     so everything jumped sideways on open and back on close; a short page also
+     jumped when results first made it scrollable. */
+  html { scrollbar-gutter: stable; }
+
   body {
     background: var(--bg);
     color: var(--text);
@@ -965,6 +971,13 @@
       </div>
       <div style="margin-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
         <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div class="card-label" style="margin-bottom: 0;">Layout</div>
+          <div class="toggle-group" id="visual-layout-options">
+            <button class="toggle active" data-visual-layout="stacks" title="Overlapping stacks, one card per copy">Stacks</button>
+            <button class="toggle" data-visual-layout="grid" title="One card per printing, with its quantity underneath">Grid</button>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
           <div class="card-label" style="margin-bottom: 0;">Export Resolution</div>
           <div class="toggle-group" id="visual-resolution-options">
             <button class="toggle active" data-visual-res="1">Full</button>
@@ -972,12 +985,13 @@
             <button class="toggle" data-visual-res="0.5">Medium</button>
           </div>
         </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
           <button class="option-toggle" id="transparent-bg-toggle">
             <span class="option-pip"></span>
             Transparent Background
           </button>
           <button class="btn-zip" id="download-visual-btn" disabled>&#8595; Download Image</button>
+          <button class="btn-zip" id="download-visual-pdf-btn" disabled title="One page at true card size (63 × 88 mm per card)">&#8595; Download PDF</button>
         </div>
       </div>
     </div>
@@ -1145,6 +1159,11 @@ function clearImageNodeCache() {
 // Cache the specific visual preview state 
 let cachedVisualCanvas = null;
 let cachedVisualTransparent = null;
+let cachedVisualLayout = null;
+// 'stacks': overlapping columns, one card per copy (MTGGoldfish style).
+// 'grid':   one card per printing, with its quantity written underneath.
+let visualLayout = 'stacks';
+let visualRenderGen = 0;
 
 function getCacheKey(name, set, number, variant) {
   return `${CACHE_KEY_PREFIX}${encodeURIComponent(name)}|${encodeURIComponent(set || 'default')}|${encodeURIComponent(number || 'none')}|${encodeURIComponent(variant || 'default')}`;
@@ -2785,7 +2804,10 @@ document.getElementById('fetch-btn').addEventListener('click',async()=>{
       // The preview no longer waits on the cosmetic grid animation — it only ever
       // needed the image data, which is already in hand by this point.
       generateVisualPreview()
-        .then(() => { document.getElementById('download-visual-btn').disabled = false; })
+        .then(() => {
+          document.getElementById('download-visual-btn').disabled = false;
+          document.getElementById('download-visual-pdf-btn').disabled = false;
+        })
         .catch(e => log(`⚠︎  Visual preview failed: ${e.message}`, 'warn'));
     }
   } catch(err) {
@@ -2814,17 +2836,66 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
 async function generateVisualPreview() {
   const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
   
-  if (cachedVisualCanvas && cachedVisualTransparent === isTransparent) {
-    const previewCanvas = document.getElementById('visual-preview-canvas');
-    if (previewCanvas) {
-      previewCanvas.width = cachedVisualCanvas.width;
-      previewCanvas.height = cachedVisualCanvas.height;
-      const previewCtx = previewCanvas.getContext('2d', { alpha: true });
-      previewCtx.drawImage(cachedVisualCanvas, 0, 0);
-    }
-    return cachedVisualCanvas;
+  if (!cachedVisualCanvas || cachedVisualTransparent !== isTransparent || cachedVisualLayout !== visualLayout) {
+    // A layout or background switch mid-render starts a newer render; the older one
+    // must not land in the cache or the preview after it.
+    const gen = ++visualRenderGen;
+    const layout = visualLayout;
+    const canvas = layout === 'grid'
+      ? await renderGridDecklist(isTransparent)
+      : await renderStackDecklist(isTransparent);
+    if (gen !== visualRenderGen) return canvas;
+    cachedVisualCanvas = canvas;
+    cachedVisualTransparent = isTransparent;
+    cachedVisualLayout = layout;
   }
 
+  const previewCanvas = document.getElementById('visual-preview-canvas');
+  if (previewCanvas) {
+    previewCanvas.width = cachedVisualCanvas.width;
+    previewCanvas.height = cachedVisualCanvas.height;
+    const previewCtx = previewCanvas.getContext('2d', { alpha: true });
+    previewCtx.drawImage(cachedVisualCanvas, 0, 0);
+  }
+  return cachedVisualCanvas;
+}
+
+// Browsers cap both a single canvas dimension and total area, and exceeding either
+// yields a silently blank canvas with no thrown error. Scale the whole render down
+// uniformly instead, so a large deck produces a smaller image rather than nothing.
+// Callers draw in unscaled coordinates; the transform handles the reduction.
+function createDecklistCanvas(width, height, isTransparent) {
+  const MAX_CANVAS_DIM  = 16384;
+  const MAX_CANVAS_AREA = 96 * 1024 * 1024;
+  let renderScale = Math.min(1, MAX_CANVAS_DIM / width, MAX_CANVAS_DIM / height);
+  if (width * height * renderScale * renderScale > MAX_CANVAS_AREA) {
+    renderScale = Math.sqrt(MAX_CANVAS_AREA / (width * height));
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.max(1, Math.floor(width  * renderScale));
+  canvas.height = Math.max(1, Math.floor(height * renderScale));
+  const ctx = canvas.getContext('2d', { alpha: true });
+  if (renderScale < 1) {
+    ctx.scale(renderScale, renderScale);
+    log(`⚠︎  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
+  }
+
+  if (!isTransparent) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, '#130a1e');
+    gradient.addColorStop(1, '#2A123F');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+  }
+  // Pre-scale size, so the PDF export can keep cards at true size even when a large
+  // deck had to be drawn smaller.
+  canvas.logicalWidth = width;
+  canvas.logicalHeight = height;
+  return { canvas, ctx };
+}
+
+async function renderStackDecklist(isTransparent) {
   const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
   const SIDEBOARD_MAX_PER_STACK = 15;
@@ -2861,35 +2932,8 @@ async function generateVisualPreview() {
   const mainHeight = mainRows > 0 ? (mainStackHeight * mainRows) + (padding * (mainRows + 1)) : 0;
   const sideHeight = sideRows > 0 ? (sideStackHeight * sideRows) + (padding * (sideRows + 1)) : 0;
   const canvasHeight = Math.max(mainHeight, sideHeight);
+  const { canvas, ctx } = createDecklistCanvas(canvasWidth, canvasHeight, isTransparent);
 
-  // Browsers cap both a single canvas dimension and total area, and exceeding either
-  // yields a silently blank canvas with no thrown error. Scale the whole render down
-  // uniformly instead, so a large deck produces a smaller image rather than nothing.
-  const MAX_CANVAS_DIM  = 16384;
-  const MAX_CANVAS_AREA = 96 * 1024 * 1024;
-  let renderScale = Math.min(1, MAX_CANVAS_DIM / canvasWidth, MAX_CANVAS_DIM / canvasHeight);
-  if (canvasWidth * canvasHeight * renderScale * renderScale > MAX_CANVAS_AREA) {
-    renderScale = Math.sqrt(MAX_CANVAS_AREA / (canvasWidth * canvasHeight));
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width  = Math.max(1, Math.floor(canvasWidth  * renderScale));
-  canvas.height = Math.max(1, Math.floor(canvasHeight * renderScale));
-  const ctx = canvas.getContext('2d', { alpha: true });
-  if (renderScale < 1) {
-    // Draw in unscaled coordinates; the transform handles the reduction.
-    ctx.scale(renderScale, renderScale);
-    log(`⚠︎  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
-  }
-  
-  if (!isTransparent) {
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
-    gradient.addColorStop(0, '#130a1e');
-    gradient.addColorStop(1, '#2A123F');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-  }
-  
   for (let i = 0; i < mainStacks.length; i++) {
     const stack = mainStacks[i];
     const col = i % MAIN_COLS;
@@ -2933,18 +2977,91 @@ async function generateVisualPreview() {
       ctx.drawImage(img, x, y, cardWidth, cardHeight);
     }
   }
-  
-  cachedVisualCanvas = canvas;
-  cachedVisualTransparent = isTransparent;
-  
-  const previewCanvas = document.getElementById('visual-preview-canvas');
-  if (previewCanvas) {
-    previewCanvas.width = canvas.width;
-    previewCanvas.height = canvas.height;
-    const previewCtx = previewCanvas.getContext('2d', { alpha: true });
-    previewCtx.drawImage(canvas, 0, 0);
+
+  return canvas;
+}
+
+// One card per printing, quantity underneath, main deck then sideboard each under a
+// "Main deck 61" style heading. Quantity 1 is left unlabelled, so the counts that
+// matter stand out.
+async function renderGridDecklist(isTransparent) {
+  const MAX_COLS   = 7;
+  const cardWidth  = 488;
+  const cardHeight = 680;
+  const radius     = 22;    // Scryfall's corner is ~4.5% of card width
+  const gapX       = 40;
+  const gapY       = 24;
+  const labelH     = 96;    // room under each card for "×4"
+  const headerH    = 120;
+  const sectionGap = 72;
+  const padding    = 64;
+
+  // Lines that resolved to the same printing (a typo and its correction, say)
+  // share one tile, with their copies added together.
+  const group = list => {
+    const byFile = new Map();
+    for (const c of list) {
+      const prior = byFile.get(c.filename);
+      if (prior) prior.quantity += c.quantity || 1;
+      else byFile.set(c.filename, { card: c, quantity: c.quantity || 1 });
+    }
+    return [...byFile.values()];
+  };
+  const sections = [
+    { title: 'Main deck', tiles: group(visualDeckData.main) },
+    { title: 'Sideboard', tiles: group(visualDeckData.sideboard) }
+  ].filter(s => s.tiles.length);
+
+  const cols = Math.max(1, Math.min(MAX_COLS, Math.max(...sections.map(s => s.tiles.length))));
+  const rowsOf = s => Math.ceil(s.tiles.length / cols);
+  const sectionHeight = s => headerH + rowsOf(s) * (cardHeight + labelH) + (rowsOf(s) - 1) * gapY;
+  const width  = padding * 2 + cols * cardWidth + (cols - 1) * gapX;
+  const height = padding * 2
+    + sections.reduce((h, s) => h + sectionHeight(s), 0)
+    + Math.max(0, sections.length - 1) * sectionGap;
+
+  // Canvas text does not wait for webfonts; without this the first render can fall
+  // back to the system sans.
+  try { await Promise.all([document.fonts.load('500 64px Jost'), document.fonts.load('400 64px Jost')]); } catch {}
+
+  const { canvas, ctx } = createDecklistCanvas(width, height, isTransparent);
+  ctx.textBaseline = 'alphabetic';
+
+  let y = padding;
+  for (const s of sections) {
+    const copies = s.tiles.reduce((n, t) => n + t.quantity, 0);
+    ctx.textAlign = 'left';
+    ctx.font = '500 64px Jost';
+    ctx.fillStyle = '#F1EDF7';
+    ctx.fillText(s.title, padding, y + 72);
+    const titleW = ctx.measureText(s.title).width;
+    ctx.font = '400 64px Jost';
+    ctx.fillStyle = '#9C8CB9';
+    ctx.fillText(String(copies), padding + titleW + 22, y + 72);
+    y += headerH;
+
+    for (let i = 0; i < s.tiles.length; i++) {
+      const { card, quantity } = s.tiles[i];
+      const x  = padding + (i % cols) * (cardWidth + gapX);
+      const ty = y + Math.floor(i / cols) * (cardHeight + labelH + gapY);
+
+      const img = await loadImage(card.blob);
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x, ty, cardWidth, cardHeight, radius);
+      ctx.clip();
+      ctx.drawImage(img, x, ty, cardWidth, cardHeight);
+      ctx.restore();
+
+      if (quantity > 1) {
+        ctx.textAlign = 'center';
+        ctx.font = '500 52px Jost';
+        ctx.fillStyle = '#F1EDF7';
+        ctx.fillText(`×${quantity}`, x + cardWidth / 2, ty + cardHeight + 68);
+      }
+    }
+    y += sectionHeight(s) - headerH + sectionGap;
   }
-  
   return canvas;
 }
 
@@ -2979,6 +3096,17 @@ document.getElementById('transparent-bg-toggle').addEventListener('click', () =>
   }
 });
   
+// ── Visual layout toggle ──────────────────────────────────────────────────────
+document.getElementById('visual-layout-options').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-visual-layout]');
+  if (!btn || btn.dataset.visualLayout === visualLayout) return;
+  document.querySelectorAll('#visual-layout-options .toggle').forEach(b => b.classList.toggle('active', b === btn));
+  visualLayout = btn.dataset.visualLayout;
+  if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
+    generateVisualPreview().catch(err => log(`⚠︎  Visual preview failed: ${err.message}`, 'warn'));
+  }
+});
+
 // ── Visual resolution toggle ──────────────────────────────────────────────────
 let visualExportScale = 1;
 document.getElementById('visual-resolution-options').addEventListener('click', (e) => {
@@ -2989,17 +3117,22 @@ document.getElementById('visual-resolution-options').addEventListener('click', (
   visualExportScale = parseFloat(btn.dataset.visualRes);
 });
 
-document.getElementById('download-visual-btn').addEventListener('click', async () => {
-  const btn = document.getElementById('download-visual-btn');
+// Renders (or reuses) the decklist and applies the Export Resolution scale. Shared by
+// the PNG and PDF downloads so both always match the preview.
+async function buildVisualExport(btn) {
   const previewCanvas = document.getElementById('visual-preview-canvas');
 
   let canvas;
   if (previewCanvas && previewCanvas.width > 0) {
+    const label = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Generating…';
-    canvas = await generateVisualPreview();
-    btn.disabled = false;
-    btn.textContent = '\u2193 Download Image';
+    try {
+      canvas = await generateVisualPreview();
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   } else {
     canvas = previewCanvas;
   }
@@ -3014,7 +3147,11 @@ document.getElementById('download-visual-btn').addEventListener('click', async (
     exportCanvas.height = h;
     exportCanvas.getContext('2d').drawImage(canvas, 0, 0, w, h);
   }
+  return { canvas, exportCanvas };
+}
 
+document.getElementById('download-visual-btn').addEventListener('click', async (e) => {
+  const { exportCanvas } = await buildVisualExport(e.currentTarget);
   exportCanvas.toBlob((blob) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -3022,6 +3159,35 @@ document.getElementById('download-visual-btn').addEventListener('click', async (
     a.click();
     URL.revokeObjectURL(a.href);
   }, 'image/png');
+});
+
+// One page sized to the decklist, with cards at their true 63 × 88 mm, so it prints
+// at real size or scales cleanly to any paper with "fit to page". The decklists draw
+// cards 488 px wide, which fixes the mm-per-px scale; Export Resolution changes only
+// the pixel density, never the page size.
+const VISUAL_PDF_MM_PER_PX = 63 / 488;   // card width in mm / drawn card width in px
+
+document.getElementById('download-visual-pdf-btn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  const { canvas, exportCanvas } = await buildVisualExport(btn);
+  const wMm = (canvas.logicalWidth  || canvas.width)  * VISUAL_PDF_MM_PER_PX;
+  const hMm = (canvas.logicalHeight || canvas.height) * VISUAL_PDF_MM_PER_PX;
+  const transparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
+
+  btn.disabled = true;
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: wMm > hMm ? 'landscape' : 'portrait', unit: 'mm', format: [wMm, hMm] });
+    // JPEG keeps the file small; PNG only when the background must stay transparent.
+    if (transparent) doc.addImage(exportCanvas, 'PNG', 0, 0, wMm, hMm);
+    else doc.addImage(exportCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, wMm, hMm);
+    doc.save(`visual-decklist-${Date.now()}.pdf`);
+  } catch (err) {
+    console.error('[Visual] PDF export failed:', err);
+    alert(`The PDF could not be built: ${err.message || err}. Try a smaller Export Resolution.`);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ── Print for Proxy ──────────────────────────────────────────────────────────
@@ -3386,7 +3552,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
   <div class="modal-content">
     <button class="modal-close" id="modal-close">×</button>
     <h3>Luminary</h3>
-    <div class="version">VERSION 4.1</div>
+    <div class="version">VERSION 4.2</div>
     
     <div class="modal-section">
       <h4>Quick Instructions</h4>
@@ -3394,7 +3560,7 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
         <li>Enter card names (one per line) or upload a .txt decklist file</li>
         <li>Select image quality and options (Paper Only, First Print)</li>
         <li>Click "Summon Cards" to fetch from Scryfall</li>
-        <li>Choose an output: Individual Cards (ZIP), Visual Decklist (PNG), or Print for Proxy (PDF)</li>
+        <li>Choose an output: Individual Cards (ZIP), Visual Decklist (PNG or PDF, stacked or grid), or Print for Proxy (PDF)</li>
         <li>Successful fetches are saved to Recent Lists so you can reload them later</li>
       </ul>
     </div>
@@ -3415,7 +3581,13 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     </div>
     
     <div class="modal-section">
-      <h4>What's New in v4.1</h4>
+      <h4>What's New in v4.2</h4>
+      <ul>
+        <li>Visual Decklist has a new Grid layout: one card per printing, with its quantity underneath</li>
+        <li>Visual decklists can be downloaded as a PDF, with cards at true size, as well as a PNG image</li>
+        <li>Opening and closing this panel no longer shifts the page sideways</li>
+      </ul>
+      <h4 style="margin-top:16px;">v4.1</h4>
       <ul>
         <li>Images now use Scryfall's WebP versions, ahead of most JPEGs being retired on 1 January 2027. Large is the new default</li>
         <li>Card lookups are batched 75 at a time and stay inside Scryfall's rate limits, so big lists are much faster</li>
@@ -3510,6 +3682,13 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
 <script>
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
+
+// The scroll lock no longer shifts the page: html reserves the scrollbar gutter
+// (scrollbar-gutter: stable), so hiding the scrollbar leaves the layout width alone.
+function closeInfoModal() {
+  infoModal.classList.remove('active');
+  document.body.style.overflow = '';
+}
 
 infoBtn.addEventListener('click', () => {
   infoModal.classList.add('active');
@@ -3644,14 +3823,10 @@ async function fetchPremiumVersion(card) {
   return premium || null;
 }
 
-document.getElementById('modal-close').addEventListener('click', () => {
-  infoModal.classList.remove('active'); document.body.style.overflow = '';
-});
+document.getElementById('modal-close').addEventListener('click', closeInfoModal);
 
 infoModal.addEventListener('click', (e) => {
-  if (e.target.id === 'info-modal') {
-    infoModal.classList.remove('active'); document.body.style.overflow = '';
-  }
+  if (e.target.id === 'info-modal') closeInfoModal();
 });
 
 document.getElementById('clear-history-btn').addEventListener('click', () => {

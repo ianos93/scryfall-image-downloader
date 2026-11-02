@@ -4,7 +4,7 @@ A single-file, browser-based tool for fetching Magic: The Gathering card images 
 
 No installation, no build step, no API key. Open `index.html` and go.
 
-**Version 4.1**
+**Version 4.2**
 
 ---
 
@@ -17,7 +17,7 @@ No installation, no build step, no API key. Open `index.html` and go.
 - **First Print** — fetch the oldest printing of each card
 - **Three output modes:**
   - **Individual Cards** — preview grid + ZIP download
-  - **Visual Decklist** — a single stacked-layout PNG, with optional transparent background
+  - **Visual Decklist** — the whole deck as one image, in stacks or a grid with quantities, as PNG or PDF
   - **Print for Proxy** — paginated A4/A3 PDF at true card dimensions
 - **Recent Lists** — your last 20 fetched lists, saved in the browser and reloadable in one click
 - Local card database for instant printing lookups (no per-card API calls)
@@ -258,19 +258,27 @@ Names are `<card>_<set>_<collector number>`, so two printings from the same set 
 
 ## Output Mode 2 — Visual Decklist
 
-Renders the whole deck as a single image using the classic stacked/fanned layout.
+Renders the whole deck as a single image, in one of two layouts. Either way, cards are sorted by type (Creature → Instant → Sorcery → Enchantment → Artifact → Planeswalker → Land), then mana value, then name.
 
+**Stacks** — the classic stacked/fanned layout:
 - **Main deck** — 5 columns, up to 4 cards per overlapping stack
 - **Sideboard** — a separate right-hand column, up to 15 cards per stack, with a rotated `SIDEBOARD` label
-- Cards are sorted by type (Creature → Instant → Sorcery → Enchantment → Artifact → Planeswalker → Land), then mana value, then name
 - Quantities are respected — a playset appears as four overlapping copies
+
+**Grid** — one card per printing:
+- **Main deck** and **Sideboard** each get a heading with their card count (`Main deck 60`), then up to 7 cards per row
+- The quantity is written under each card (`×4`); single copies are left unlabelled so the counts that matter stand out
+- Lines that resolved to the same printing share one card, with their copies added together
 
 ### Options
 
+- **Layout** — Stacks or Grid
 - **Export Resolution** — Full, Large (75%), or Medium (50%)
-- **Transparent Background** — drops the purple gradient backdrop, giving a PNG with alpha for compositing elsewhere
+- **Transparent Background** — drops the purple gradient backdrop, giving a PNG with alpha for compositing elsewhere. The grid's headings and counts are light-coloured, so they need a dark background behind them
 
 **Download Image** saves a PNG named `visual-decklist-<timestamp>.png`.
+
+**Download PDF** saves `visual-decklist-<timestamp>.pdf`: a single page sized to the decklist, with every card at its true 63 × 88 mm, so it prints at real size or scales to any paper with "fit to page". Export Resolution changes the image detail, not the page size. The image is stored as JPEG, or PNG when Transparent Background is on, which makes that PDF several times larger.
 
 ---
 
@@ -389,6 +397,17 @@ Images are **not** cached; only metadata is.
 - **Recent Lists** sits above Image Resolution and appears once you have fetched something.
 - The progress area shows a phase label, a per-phase counter, and a scrolling log.
 - There is one undocumented option, unlocked by a keyboard sequence, that swaps cards for their showcase, borderless, Universes Beyond, and Secret Lair printings where available. It relies on Scryfall's `/cards/search` endpoint, one request per card at 2 per second, so it is slow on long lists.
+
+---
+
+## What's New in 4.2
+
+**New**
+- Visual Decklist **Grid** layout: one card per printing, quantity underneath, with Main deck and Sideboard headings and counts
+- Visual decklists download as **PDF** too, one page with cards at true size
+
+**Fixed**
+- Opening or closing the info panel shifted the whole page sideways by the scrollbar's width; so did a short page first becoming scrollable
 
 ---
 
