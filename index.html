@@ -593,6 +593,71 @@
   .bar-export { gap: 12px; margin-left: auto; justify-content: flex-end; }
   .bar-field { display: flex; flex-direction: column; gap: 8px; }
   .bar-field .card-label { margin-bottom: 0; }
+  /* ── Background colour picker ──
+     Drawn by the page instead of <input type="color">, whose window belongs to the
+     operating system: it cannot take the site's styling and opens in RGB on most
+     platforms. Hex leads; the area, hue strip and swatches all write to it. */
+  .bg-field { position: relative; }
+  .bg-swatch { display: inline-flex; align-items: center; gap: 8px; }
+  .bg-chip { width: 14px; height: 14px; flex: none; border-radius: 3px; border: 1px solid rgba(241,237,247,0.45); }
+  .bg-picker {
+    position: absolute; top: calc(100% + 10px); left: 0; z-index: 20;
+    width: 256px; padding: 14px;
+    display: flex; flex-direction: column; gap: 12px;
+    background: #1E1030;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-surface);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.55);
+  }
+  .bg-picker[hidden] { display: none; }
+  .bg-hex-row { display: flex; align-items: center; gap: 10px; }
+  .bg-hex-row label {
+    font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(241,237,247,0.7);
+  }
+  .bg-hex {
+    flex: 1; min-width: 0;
+    background: rgba(20,8,35,0.6); color: var(--pearl);
+    border: 1px solid var(--panel-border); border-radius: var(--radius-control);
+    padding: 8px 10px; outline: none;
+    font-family: 'Jost', sans-serif; font-size: 14px; font-weight: 400; letter-spacing: 0.08em;
+    text-transform: uppercase; font-variant-numeric: tabular-nums;
+  }
+  .bg-hex:focus { border-color: var(--lavender); }
+  .bg-hex[aria-invalid="true"] { border-color: rgba(255,120,140,0.75); }
+  .bg-sv {
+    position: relative; height: 140px; cursor: crosshair; touch-action: none;
+    border-radius: var(--radius-control);
+    background:
+      linear-gradient(to top, #000, rgba(0,0,0,0)),
+      linear-gradient(to right, #fff, rgba(255,255,255,0)),
+      var(--hue-color, #f00);
+  }
+  .bg-sv-handle {
+    position: absolute; width: 14px; height: 14px; border-radius: 50%;
+    transform: translate(-50%, -50%); pointer-events: none;
+    border: 2px solid var(--pearl);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .bg-hue {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 12px; margin: 0;
+    border-radius: 6px; cursor: pointer;
+    background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  }
+  .bg-hue::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: transparent; border: 2px solid var(--pearl); box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .bg-hue::-moz-range-thumb {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: transparent; border: 2px solid var(--pearl); box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .bg-presets { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+  .bg-preset {
+    aspect-ratio: 1; padding: 0; cursor: pointer;
+    border: 1px solid rgba(241,237,247,0.25); border-radius: 4px;
+  }
+  .bg-preset[aria-pressed="true"] { outline: 2px solid var(--lavender); outline-offset: 1px; }
   .bar-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
   .bar-summary {
     font-family: 'Jost', sans-serif; font-weight: 300; font-size: 12px;
@@ -1064,13 +1129,40 @@
             <div class="card-label">Layout</div>
             <div class="toggle-group" id="visual-layout-options">
               <button class="toggle active" data-visual-layout="stacks" title="Overlapping stacks, one card per copy">Stacks</button>
-              <button class="toggle" data-visual-layout="grid" title="One card per printing, with its quantity underneath">Grid</button>
+              <button class="toggle" data-visual-layout="grid" title="One card per printing, with its quantity on a badge">Grid</button>
             </div>
           </div>
-          <button class="option-toggle" id="transparent-bg-toggle">
-            <span class="option-pip"></span>
-            Transparent Background
-          </button>
+          <div class="bar-field bg-field">
+            <div class="card-label">Background</div>
+            <div class="toggle-group" id="visual-bg-options">
+              <button class="toggle active" data-visual-bg="default" title="Luminary's violet gradient">Luminary</button>
+              <button class="toggle bg-swatch" data-visual-bg="solid" id="bg-colour-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="bg-picker" title="Pick any solid colour">
+                <span class="bg-chip" id="bg-chip" style="background:#1B1B1F"></span>Colour
+              </button>
+              <button class="toggle" data-visual-bg="transparent" title="No background, for compositing elsewhere">Transparent</button>
+            </div>
+            <div class="bg-picker" id="bg-picker" role="dialog" aria-label="Background colour" hidden>
+              <div class="bg-hex-row">
+                <label for="bg-hex">Hex</label>
+                <input type="text" class="bg-hex" id="bg-hex" value="#1B1B1F" maxlength="7" spellcheck="false" autocomplete="off">
+              </div>
+              <div class="bg-sv" id="bg-sv" tabindex="0" role="slider" aria-label="Saturation and brightness">
+                <span class="bg-sv-handle" id="bg-sv-handle"></span>
+              </div>
+              <input type="range" class="bg-hue" id="bg-hue" min="0" max="359" step="1" aria-label="Hue">
+              <div class="bg-presets" id="bg-presets">
+                <button type="button" class="bg-preset" data-hex="#130A1E" style="background:#130A1E" aria-label="#130A1E"></button>
+                <button type="button" class="bg-preset" data-hex="#2A123F" style="background:#2A123F" aria-label="#2A123F"></button>
+                <button type="button" class="bg-preset" data-hex="#481F6F" style="background:#481F6F" aria-label="#481F6F"></button>
+                <button type="button" class="bg-preset" data-hex="#9C8CB9" style="background:#9C8CB9" aria-label="#9C8CB9"></button>
+                <button type="button" class="bg-preset" data-hex="#C6B6DD" style="background:#C6B6DD" aria-label="#C6B6DD"></button>
+                <button type="button" class="bg-preset" data-hex="#F1EDF7" style="background:#F1EDF7" aria-label="#F1EDF7"></button>
+                <button type="button" class="bg-preset" data-hex="#000000" style="background:#000000" aria-label="#000000"></button>
+                <button type="button" class="bg-preset" data-hex="#1B1B1F" style="background:#1B1B1F" aria-label="#1B1B1F"></button>
+                <button type="button" class="bg-preset" data-hex="#FFFFFF" style="background:#FFFFFF" aria-label="#FFFFFF"></button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="bar-group bar-export">
           <div class="bar-field">
@@ -1260,7 +1352,10 @@ function clearImageNodeCache() {
 }
 // Cache the specific visual preview state 
 let cachedVisualCanvas = null;
-let cachedVisualTransparent = null;
+let cachedVisualBgKey = null;
+// Decklist image background: Luminary's gradient, one solid colour, or none.
+let visualBg = { mode: 'default', color: '#1B1B1F' };
+const visualBgKey = () => `${visualBg.mode}|${visualBg.color}`;
 let cachedVisualLayout = null;
 // 'stacks': overlapping columns, one card per copy (MTGGoldfish style).
 // 'grid':   one card per printing, with its quantity written underneath.
@@ -3108,19 +3203,20 @@ document.getElementById('dl-btn').addEventListener('click',async()=>{
 });
 
 async function generateVisualPreview() {
-  const isTransparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
-  
-  if (!cachedVisualCanvas || cachedVisualTransparent !== isTransparent || cachedVisualLayout !== visualLayout) {
+  const bgKey = visualBgKey();
+
+  if (!cachedVisualCanvas || cachedVisualBgKey !== bgKey || cachedVisualLayout !== visualLayout) {
     // A layout or background switch mid-render starts a newer render; the older one
     // must not land in the cache or the preview after it.
     const gen = ++visualRenderGen;
     const layout = visualLayout;
+    const bg = { ...visualBg };
     const canvas = layout === 'grid'
-      ? await renderGridDecklist(isTransparent)
-      : await renderStackDecklist(isTransparent);
+      ? await renderGridDecklist(bg)
+      : await renderStackDecklist(bg);
     if (gen !== visualRenderGen) return canvas;
     cachedVisualCanvas = canvas;
-    cachedVisualTransparent = isTransparent;
+    cachedVisualBgKey = bgKey;
     cachedVisualLayout = layout;
   }
 
@@ -3150,7 +3246,7 @@ function updateVisualExportSize() {
 // yields a silently blank canvas with no thrown error. Scale the whole render down
 // uniformly instead, so a large deck produces a smaller image rather than nothing.
 // Callers draw in unscaled coordinates; the transform handles the reduction.
-function createDecklistCanvas(width, height, isTransparent) {
+function createDecklistCanvas(width, height, bg) {
   const MAX_CANVAS_DIM  = 16384;
   const MAX_CANVAS_AREA = 96 * 1024 * 1024;
   let renderScale = Math.min(1, MAX_CANVAS_DIM / width, MAX_CANVAS_DIM / height);
@@ -3167,7 +3263,10 @@ function createDecklistCanvas(width, height, isTransparent) {
     log(`⚠︎  Deck too large for a full-size image — preview scaled to ${Math.round(renderScale * 100)}%.`, 'warn');
   }
 
-  if (!isTransparent) {
+  if (bg.mode === 'solid') {
+    ctx.fillStyle = bg.color;
+    ctx.fillRect(0, 0, width, height);
+  } else if (bg.mode !== 'transparent') {
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
     gradient.addColorStop(0, '#130a1e');
     gradient.addColorStop(1, '#2A123F');
@@ -3181,7 +3280,17 @@ function createDecklistCanvas(width, height, isTransparent) {
   return { canvas, ctx };
 }
 
-async function renderStackDecklist(isTransparent) {
+// Text colours that read on the chosen background: pearl on dark grounds, ink on
+// light ones. 0.18 is roughly where dark and light text have equal contrast.
+function decklistInk(bg) {
+  if (bg.mode !== 'solid') return { primary: '#F1EDF7', secondary: '#9C8CB9' };
+  const n = parseInt(bg.color.slice(1), 16);
+  const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const lum = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return lum > 0.18 ? { primary: '#130A1E', secondary: '#481F6F' } : { primary: '#F1EDF7', secondary: '#C6B6DD' };
+}
+
+async function renderStackDecklist(bg) {
   const MAIN_COLS = 5;
   const MAX_PER_STACK = 4;
   const SIDEBOARD_MAX_PER_STACK = 15;
@@ -3232,7 +3341,7 @@ async function renderStackDecklist(isTransparent) {
 
   const canvasWidth = mainWidth + (sideStacks.length > 0 ? sidebarGap + sideWidth : 0);
   const canvasHeight = Math.max(mainHeight, sideHeight);
-  const { canvas, ctx } = createDecklistCanvas(canvasWidth, canvasHeight, isTransparent);
+  const { canvas, ctx } = createDecklistCanvas(canvasWidth, canvasHeight, bg);
 
   for (let i = 0; i < mainStacks.length; i++) {
     const stack = mainStacks[i];
@@ -3253,7 +3362,7 @@ async function renderStackDecklist(isTransparent) {
   if (sideStacks.length > 0) {
     const labelX = mainWidth + (sidebarGap / 2);
     const labelY = sideHeight / 2;   // centred on the sideboard column, not the image
-    ctx.fillStyle = '#F1EDF7';
+    ctx.fillStyle = decklistInk(bg).primary;
     ctx.font = '36px Jost';
     ctx.letterSpacing = '0.2em';
     ctx.textAlign = 'center';
@@ -3281,17 +3390,16 @@ async function renderStackDecklist(isTransparent) {
   return canvas;
 }
 
-// One card per printing, quantity underneath, main deck then sideboard each under a
-// "Main deck 61" style heading. Quantity 1 is left unlabelled, so the counts that
-// matter stand out.
-async function renderGridDecklist(isTransparent) {
+// One card per printing, its quantity on a badge in the card's lower-left corner,
+// main deck then sideboard each under a "Main deck 61" style heading. Quantity 1 is
+// left unbadged, so the counts that matter stand out.
+async function renderGridDecklist(bg) {
   const MAX_COLS   = 7;
   const cardWidth  = 488;
   const cardHeight = 680;
   const radius     = 22;    // Scryfall's corner is ~4.5% of card width
   const gapX       = 40;
-  const gapY       = 24;
-  const labelH     = 96;    // room under each card for "×4"
+  const gapY       = 40;
   const headerH    = 120;
   const sectionGap = 72;
   const padding    = 64;
@@ -3314,7 +3422,7 @@ async function renderGridDecklist(isTransparent) {
 
   const cols = Math.max(1, Math.min(MAX_COLS, Math.max(...sections.map(s => s.tiles.length))));
   const rowsOf = s => Math.ceil(s.tiles.length / cols);
-  const sectionHeight = s => headerH + rowsOf(s) * (cardHeight + labelH) + (rowsOf(s) - 1) * gapY;
+  const sectionHeight = s => headerH + rowsOf(s) * cardHeight + (rowsOf(s) - 1) * gapY;
   const width  = padding * 2 + cols * cardWidth + (cols - 1) * gapX;
   const height = padding * 2
     + sections.reduce((h, s) => h + sectionHeight(s), 0)
@@ -3324,7 +3432,8 @@ async function renderGridDecklist(isTransparent) {
   // back to the system sans.
   try { await Promise.all([document.fonts.load('500 64px Jost'), document.fonts.load('400 64px Jost')]); } catch {}
 
-  const { canvas, ctx } = createDecklistCanvas(width, height, isTransparent);
+  const { canvas, ctx } = createDecklistCanvas(width, height, bg);
+  const ink = decklistInk(bg);
   ctx.textBaseline = 'alphabetic';
 
   let y = padding;
@@ -3332,18 +3441,18 @@ async function renderGridDecklist(isTransparent) {
     const copies = s.tiles.reduce((n, t) => n + t.quantity, 0);
     ctx.textAlign = 'left';
     ctx.font = '500 64px Jost';
-    ctx.fillStyle = '#F1EDF7';
+    ctx.fillStyle = ink.primary;
     ctx.fillText(s.title, padding, y + 72);
     const titleW = ctx.measureText(s.title).width;
     ctx.font = '400 64px Jost';
-    ctx.fillStyle = '#9C8CB9';
+    ctx.fillStyle = ink.secondary;
     ctx.fillText(String(copies), padding + titleW + 22, y + 72);
     y += headerH;
 
     for (let i = 0; i < s.tiles.length; i++) {
       const { card, quantity } = s.tiles[i];
       const x  = padding + (i % cols) * (cardWidth + gapX);
-      const ty = y + Math.floor(i / cols) * (cardHeight + labelH + gapY);
+      const ty = y + Math.floor(i / cols) * (cardHeight + gapY);
 
       const img = await loadImage(card.blob);
       ctx.save();
@@ -3353,11 +3462,24 @@ async function renderGridDecklist(isTransparent) {
       ctx.drawImage(img, x, ty, cardWidth, cardHeight);
       ctx.restore();
 
+      // The badge sits on the card itself, so it reads the same on any background,
+      // transparent included. Bottom-left keeps it off the name and mana cost.
       if (quantity > 1) {
-        ctx.textAlign = 'center';
-        ctx.font = '500 52px Jost';
+        const label = `×${quantity}`;
+        ctx.font = '500 46px Jost';
+        const bw = Math.ceil(ctx.measureText(label).width) + 40;
+        const bh = 72;
+        const bx = x + 22;
+        const by = ty + cardHeight - bh - 22;
+        ctx.fillStyle = '#481F6F';
+        ctx.beginPath();
+        ctx.roundRect(bx, by, bw, bh, 10);
+        ctx.fill();
         ctx.fillStyle = '#F1EDF7';
-        ctx.fillText(`×${quantity}`, x + cardWidth / 2, ty + cardHeight + 68);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, bx + 20, by + bh / 2 + 3);
+        ctx.textBaseline = 'alphabetic';
       }
     }
     y += sectionHeight(s) - headerH + sectionGap;
@@ -3389,11 +3511,142 @@ function loadImage(blob) {
   });
 }
 
-document.getElementById('transparent-bg-toggle').addEventListener('click', () => {
-  document.getElementById('transparent-bg-toggle').classList.toggle('active');
+// ── Visual background ─────────────────────────────────────────────────────────
+function setVisualBg(mode) {
+  visualBg.mode = mode;
+  document.querySelectorAll('#visual-bg-options [data-visual-bg]').forEach(el =>
+    el.classList.toggle('active', el.dataset.visualBg === mode));
   if (visualDeckData.main.length > 0 || visualDeckData.sideboard.length > 0) {
-    generateVisualPreview();
+    generateVisualPreview().catch(err => log(`⚠︎  Visual preview failed: ${err.message}`, 'warn'));
   }
+}
+document.getElementById('visual-bg-options').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-visual-bg]');
+  if (!btn) return;
+  setVisualBg(btn.dataset.visualBg);
+  // Colour selects the last colour straight away and opens the picker to change it.
+  if (btn.dataset.visualBg === 'solid') toggleBgPicker();
+  else closeBgPicker(false);
+});
+
+// ── Background colour picker ──────────────────────────────────────────────────
+const bgPicker    = document.getElementById('bg-picker');
+const bgColourBtn = document.getElementById('bg-colour-btn');
+const bgSv        = document.getElementById('bg-sv');
+const bgSvHandle  = document.getElementById('bg-sv-handle');
+const bgHue       = document.getElementById('bg-hue');
+const bgHex       = document.getElementById('bg-hex');
+const bgChip      = document.getElementById('bg-chip');
+
+function normaliseHex(value) {
+  let v = String(value).trim().replace(/^#?/, '#');
+  if (/^#[0-9a-f]{3}$/i.test(v)) v = '#' + [...v.slice(1)].map(c => c + c).join('');
+  return /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : null;
+}
+function hexToHsv(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: Math.round((h * 60 + 360) % 360), s: max ? d / max : 0, v: max };
+}
+function hsvToHex({ h, s, v }) {
+  const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+// Hue is kept separately rather than derived from the hex every time: a grey has no
+// hue, and deriving it would snap the strip back to red whenever saturation hit 0.
+let bgHsv = hexToHsv(visualBg.color);
+let bgPreviewTimer;
+
+function renderBgPicker() {
+  bgSv.style.setProperty('--hue-color', `hsl(${bgHsv.h} 100% 50%)`);
+  bgSvHandle.style.left = `${bgHsv.s * 100}%`;
+  bgSvHandle.style.top  = `${(1 - bgHsv.v) * 100}%`;
+  bgSv.setAttribute('aria-valuetext', `Saturation ${Math.round(bgHsv.s * 100)}%, brightness ${Math.round(bgHsv.v * 100)}%`);
+  bgHue.value = bgHsv.h;
+  document.querySelectorAll('.bg-preset').forEach(p =>
+    p.setAttribute('aria-pressed', String(p.dataset.hex === visualBg.color)));
+}
+
+// from says which control made the change, so that control is not rewritten under
+// the person using it (a half-typed hex, a hue dragged across a grey).
+function applyBgColour(hex, from) {
+  visualBg.color = hex;
+  bgChip.style.background = hex;
+  if (from !== 'hex') { bgHex.value = hex; bgHex.removeAttribute('aria-invalid'); }
+  if (from !== 'hsv') bgHsv = hexToHsv(hex);
+  renderBgPicker();
+  // Every pointer move would otherwise queue a full decklist render; let it settle.
+  clearTimeout(bgPreviewTimer);
+  bgPreviewTimer = setTimeout(() => setVisualBg('solid'), 120);
+}
+
+function openBgPicker() {
+  bgPicker.hidden = false;
+  bgColourBtn.setAttribute('aria-expanded', 'true');
+  bgHsv = hexToHsv(visualBg.color);
+  bgHex.value = visualBg.color;
+  renderBgPicker();
+  bgHex.focus();
+  bgHex.select();
+}
+function closeBgPicker(returnFocus) {
+  if (bgPicker.hidden) return;
+  bgPicker.hidden = true;
+  bgColourBtn.setAttribute('aria-expanded', 'false');
+  if (!normaliseHex(bgHex.value)) bgHex.value = visualBg.color;
+  if (returnFocus) bgColourBtn.focus();
+}
+function toggleBgPicker() { bgPicker.hidden ? openBgPicker() : closeBgPicker(true); }
+
+bgHex.addEventListener('input', () => {
+  const hex = normaliseHex(bgHex.value);
+  bgHex.setAttribute('aria-invalid', String(!hex));
+  if (hex) applyBgColour(hex, 'hex');
+});
+bgHex.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); closeBgPicker(true); }
+});
+
+function svFromPointer(e) {
+  const r = bgSv.getBoundingClientRect();
+  bgHsv.s = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  bgHsv.v = Math.min(1, Math.max(0, 1 - (e.clientY - r.top) / r.height));
+  applyBgColour(hsvToHex(bgHsv), 'hsv');
+}
+bgSv.addEventListener('pointerdown', (e) => {
+  bgSv.setPointerCapture(e.pointerId);
+  svFromPointer(e);
+});
+bgSv.addEventListener('pointermove', (e) => {
+  if (bgSv.hasPointerCapture(e.pointerId)) svFromPointer(e);
+});
+bgSv.addEventListener('keydown', (e) => {
+  const step = e.shiftKey ? 0.1 : 0.02;
+  const moves = { ArrowLeft: ['s', -step], ArrowRight: ['s', step], ArrowUp: ['v', step], ArrowDown: ['v', -step] };
+  const m = moves[e.key];
+  if (!m) return;
+  e.preventDefault();
+  bgHsv[m[0]] = Math.min(1, Math.max(0, bgHsv[m[0]] + m[1]));
+  applyBgColour(hsvToHex(bgHsv), 'hsv');
+});
+bgHue.addEventListener('input', () => {
+  bgHsv.h = Number(bgHue.value);
+  applyBgColour(hsvToHex(bgHsv), 'hsv');
+});
+document.getElementById('bg-presets').addEventListener('click', (e) => {
+  const p = e.target.closest('.bg-preset');
+  if (p) applyBgColour(p.dataset.hex);
+});
+
+bgPicker.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.preventDefault(); closeBgPicker(true); }
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!bgPicker.hidden && !bgPicker.contains(e.target) && !bgColourBtn.contains(e.target)) closeBgPicker(false);
 });
   
 // ── Visual layout toggle ──────────────────────────────────────────────────────
@@ -3477,7 +3730,7 @@ document.getElementById('download-visual-pdf-btn').addEventListener('click', asy
   const { canvas, exportCanvas } = await buildVisualExport(btn);
   const wMm = (canvas.logicalWidth  || canvas.width)  * VISUAL_PDF_MM_PER_PX;
   const hMm = (canvas.logicalHeight || canvas.height) * VISUAL_PDF_MM_PER_PX;
-  const transparent = document.getElementById('transparent-bg-toggle').classList.contains('active');
+  const transparent = visualBg.mode === 'transparent';
 
   btn.disabled = true;
   showPanelError('visual-error', '');
@@ -3492,7 +3745,7 @@ document.getElementById('download-visual-pdf-btn').addEventListener('click', asy
     announce(`Saved ${name}.`);
   } catch (err) {
     console.error('[Visual] PDF export failed:', err);
-    showPanelError('visual-error', 'The PDF could not be built, usually because the browser ran out of memory. Try a smaller Export Size, or turn off Transparent Background.');
+    showPanelError('visual-error', 'The PDF could not be built, usually because the browser ran out of memory. Try a smaller Export Size, or a Background other than Transparent.');
   } finally {
     btn.disabled = false;
   }
@@ -3904,33 +4157,12 @@ document.getElementById('proxy-generate-btn').addEventListener('click', async ()
     <div class="modal-section">
       <h4>What's New in v4.2</h4>
       <ul>
-        <li>Visual Decklist has a new Grid layout: one card per printing, with its quantity underneath</li>
-        <li>Visual decklists can be downloaded as a PDF, with cards at true size, as well as a PNG image</li>
-        <li>Every output tab now opens with its controls and download button at the top, kept in view as you scroll; on phones the download sits at the bottom of the screen</li>
-        <li>Visual Decklist export sizes are shown as 100% / 75% / 50% with the exact pixel size</li>
-        <li>A finished run says how many cards were summoned, lists any that failed or were corrected, and takes you to their line in Card Names</li>
+        <li>Visual Decklist: a Grid layout with quantity badges, any background colour, and PDF as well as PNG downloads</li>
+        <li>Every output tab opens with its controls and download button at the top, kept in view as you scroll</li>
+        <li>A finished run lists any cards that failed or were corrected, and takes you to their line in Card Names</li>
         <li>Errors appear next to the button that failed instead of in pop-ups, and screen readers hear progress and results</li>
-        <li>The stacked decklist image no longer reserves empty space for stacks it does not have</li>
-        <li>Opening and closing this panel no longer shifts the page sideways</li>
       </ul>
-      <h4 style="margin-top:16px;">v4.1</h4>
-      <ul>
-        <li>Images now use Scryfall's WebP versions, ahead of most JPEGs being retired on 1 January 2027. Large is the new default</li>
-        <li>Card lookups are batched 75 at a time and stay inside Scryfall's rate limits, so big lists are much faster</li>
-        <li>Two printings from the same set no longer overwrite each other in the ZIP or the cache</li>
-        <li>A set + collector number that points at a different card is caught and matched by name instead</li>
-        <li>Lines typed in all capitals, and names that start with a number, parse correctly</li>
-      </ul>
-      <h4 style="margin-top:16px;">v4.0</h4>
-      <ul>
-        <li>Recent Lists — your last 20 fetched lists, saved in this browser. Reload, rename, or download any of them as .txt</li>
-        <li>First Print now resolves to the base printing, not a same-day showcase or retro-frame variant</li>
-        <li>Repeated lines add their quantities instead of the later line being dropped</li>
-        <li>Log entries say why a printing changed: <em>first print</em>, <em>paper print</em> or <em>alt print used</em></li>
-        <li>Card database rebuilt for Scryfall's JSONL bulk format, now storing collector numbers</li>
-        <li>Proxy PDFs are far smaller, and large decks no longer risk a blank visual decklist</li>
-        <li>Bounded image memory, tightened security policy, and a squarer interface</li>
-      </ul>
+      <p style="margin-top:10px; font-size:12px; color:rgba(241,237,247,0.6);">Earlier versions are listed in the <a href="https://github.com/ianos93/scryfall-image-downloader#whats-new-in-42" target="_blank" rel="noopener" style="color:var(--orchid);">README on GitHub</a>.</p>
     </div>
     
     <div class="modal-section">

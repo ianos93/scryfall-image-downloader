@@ -279,20 +279,20 @@ Renders the whole deck as a single image, in one of two layouts. Either way, car
 
 **Grid** — one card per printing:
 - **Main deck** and **Sideboard** each get a heading with their card count (`Main deck 60`), then up to 7 cards per row
-- The quantity is written under each card (`×4`); single copies are left unlabelled so the counts that matter stand out
+- The quantity sits on a badge in each card's lower-left corner (`×4`); single copies are left unbadged so the counts that matter stand out
 - Lines that resolved to the same printing share one card, with their copies added together
 
 ### Options
 
-The controls sit in a bar above the preview that stays in view while you scroll: view settings (Layout, Transparent Background) on the left, export settings and the downloads on the right. Each output tab uses the same arrangement. On a phone the export controls move to a bar pinned to the bottom of the screen instead.
+The controls sit in a bar above the preview that stays in view while you scroll: view settings (Layout, Background) on the left, export settings and the downloads on the right. Each output tab uses the same arrangement. On a phone the export controls move to a bar pinned to the bottom of the screen instead.
 
 - **Layout** — Stacks or Grid
 - **Export Size** — 100%, 75% or 50% of the rendered image, with the resulting pixel size shown next to it
-- **Transparent Background** — drops the purple gradient backdrop, giving a PNG with alpha for compositing elsewhere. The grid's headings and counts are light-coloured, so they need a dark background behind them
+- **Background** — **Luminary** (the violet gradient), **Colour** (any solid colour: type a hex value, drag in the colour area and hue strip, or pick one of the palette swatches), or **Transparent** (a PNG with alpha for compositing elsewhere). On a light colour the headings and the SIDEBOARD label switch to dark ink so they stay readable; quantity badges sit on the cards, so they read on any background
 
 **Download Image** saves a PNG named `visual-decklist-<timestamp>.png`.
 
-**Download PDF** saves `visual-decklist-<timestamp>.pdf`: a single page sized to the decklist, with every card at its true 63 × 88 mm, so it prints at real size or scales to any paper with "fit to page". Export Resolution changes the image detail, not the page size. The image is stored as JPEG, or PNG when Transparent Background is on, which makes that PDF several times larger.
+**Download PDF** saves `visual-decklist-<timestamp>.pdf`: a single page sized to the decklist, with every card at its true 63 × 88 mm, so it prints at real size or scales to any paper with "fit to page". Export Resolution changes the image detail, not the page size. The image is stored as JPEG, or PNG when Background is Transparent, which makes that PDF several times larger.
 
 ---
 
@@ -417,7 +417,8 @@ Images are **not** cached; only metadata is.
 ## What's New in 4.2
 
 **New**
-- Visual Decklist **Grid** layout: one card per printing, quantity underneath, with Main deck and Sideboard headings and counts
+- Visual Decklist **Grid** layout: one card per printing with a quantity badge on the card, under Main deck and Sideboard headings and counts
+- Visual Decklist **Background** choice: the Luminary gradient, any solid colour, or transparent. The colour picker is the site's own, with hex entry first, rather than the browser's
 - Visual decklists download as **PDF** too, one page with cards at true size
 
 **Changed**
